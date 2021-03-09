@@ -18,14 +18,14 @@ spec:
         name: test-container
         resources:
           requests:
-            cpu: 7
+            cpu: 1
             memory: 1Gi
 
 # the rest here is optional if you are targeting a tainted node pool
-      nodeSelector:
-        cloud.google.com/gke-nodepool: highmem-nodes
-      tolerations:
-      - effect: NoExecute
-        key: special
-        operator: Equal
-        value: highmem  
+#      nodeSelector:
+#        cloud.google.com/gke-nodepool: highmem-nodes
+#      tolerations:
+#      - effect: NoExecute
+#        key: special
+#        operator: Equal
+#        value: highmem  

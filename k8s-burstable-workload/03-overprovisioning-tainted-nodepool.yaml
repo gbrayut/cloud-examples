@@ -20,7 +20,7 @@ spec:
         name: reserve-resources
         resources:
           requests:
-            cpu: 6
+            cpu: 1
             memory: 1Gi
       nodeSelector:
         cloud.google.com/gke-nodepool: highmem-nodes

@@ -26,7 +26,7 @@ spec:
         name: reserve-resources
         resources:
           requests:
-            cpu: 0.5
+            cpu: 1
             memory: 1Gi
       priorityClassName: overprovisioning
       terminationGracePeriodSeconds: 0
