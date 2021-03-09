@@ -1,0 +1,61 @@
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: overprovisioning
+# Can use negative values, but default cluster autoscalers will not scale-up node pool for pending pods with negative values.
+# use zero here for lowest priority that still triggers scale up. Note https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/#notes-about-podpriority-and-existing-clusters
+value: 0
+globalDefault: false
+description: "Lowest priority class that will be used by overprovisioning for float capacity."
+# new optional beta feature in v1.19. See https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/#non-preempting-priority-class
+# preemptionPolicy: Never
+---
+# You must also define at least one higher priority class, as the default system-cluster-critical and system-node-critical can only be used in kube-* namespaces
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: normal-priority
+value: 50000
+globalDefault: true
+description: "This priority class will be the default for all pods that do not specify priorityClassName in their spec."
+---
+# Additional classes can be defined if you need to make sure daemonsets get scheduled or want to label other workloads as high/low priority
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: cluster-critical
+value: 1000000000
+globalDefault: false
+description: "Used for critical pods that should be top priority but are outside kube-* namespaces."
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: node-critical
+value: 5000000
+globalDefault: false
+description: "This priority class should be used only for daemonsets to guarantee scheduling."
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: high-priority
+value: 1000000
+globalDefault: false
+description: "This priority class should be used for High priority service pods only."
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: low-priority
+value: 1000
+globalDefault: false
+description: "This priority class should be used for low priority/pre-emptable workloads."
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: non-scale-up-priority
+value: -50000
+globalDefault: false
+description: "This priority class should be used for ultra-low priority batch workloads with no SLA. It will only get scheduled if there is existing capacity not being used."

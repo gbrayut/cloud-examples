@@ -1,0 +1,32 @@
+# This will create a separate namespace for these pods, or you can just use kube-system
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: overprovisioning
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: overprovisioning
+  namespace: overprovisioning
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      run: overprovisioning
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        run: overprovisioning
+    spec:
+      containers:
+      - image: k8s.gcr.io/pause
+        name: reserve-resources
+        resources:
+          requests:
+            cpu: 1
+            memory: 1Gi
+      priorityClassName: overprovisioning
+      terminationGracePeriodSeconds: 0

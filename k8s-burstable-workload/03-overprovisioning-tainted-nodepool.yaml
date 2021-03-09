@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: overprovisioning-highmem
+  namespace: overprovisioning
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      run: overprovisioning-highmem
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        run: overprovisioning-highmem
+    spec:
+      containers:
+      - image: k8s.gcr.io/pause
+        name: reserve-resources
+        resources:
+          requests:
+            cpu: 1
+            memory: 1Gi
+      nodeSelector:
+        cloud.google.com/gke-nodepool: highmem-nodes
+      priorityClassName: overprovisioning
+      tolerations:
+      - effect: NoExecute
+        key: special
+        operator: Equal
+        value: highmem  

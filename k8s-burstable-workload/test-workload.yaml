@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-workload
+  namespace: overprovisioning
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      run: test-workload
+  template:
+    metadata:
+      labels:
+        run: test-workload
+    spec:
+      containers:
+      - image: k8s.gcr.io/pause
+        name: test-container
+        resources:
+          requests:
+            cpu: 1
+            memory: 1Gi
+
+# the rest here is optional if you are targeting a tainted node pool
+#      nodeSelector:
+#        cloud.google.com/gke-nodepool: highmem-nodes
+#      tolerations:
+#      - effect: NoExecute
+#        key: special
+#        operator: Equal
+#        value: highmem  
