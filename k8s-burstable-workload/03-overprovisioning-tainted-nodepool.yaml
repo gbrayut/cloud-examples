@@ -25,6 +25,7 @@ spec:
       nodeSelector:
         cloud.google.com/gke-nodepool: highmem-nodes
       priorityClassName: overprovisioning
+      terminationGracePeriodSeconds: 0
       tolerations:
       - effect: NoExecute
         key: special

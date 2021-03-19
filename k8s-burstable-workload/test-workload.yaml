@@ -21,7 +21,7 @@ spec:
             cpu: 1
             memory: 1Gi
 
-# the rest here is optional if you are targeting a tainted node pool
+# the rest here is only for when you are targeting a tainted node pool
 #      nodeSelector:
 #        cloud.google.com/gke-nodepool: highmem-nodes
 #      tolerations:
