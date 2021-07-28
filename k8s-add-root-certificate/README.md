@@ -2,14 +2,14 @@
 
 ## Overview
 
-Should show "Error: ErrImagePull" and "x509: certificate signed by unknown authority"
+If you try and use a container registry with a private or self signed TLS certificate, you likely will see "Error: ErrImagePull" and "x509: certificate signed by unknown authority" errors. This example shows how to work around those issues by initializing GKE nodes to trust your public root certificate.
 
 You will need a private registry and Kubernetes cluster for testing. See [Setup notes](./setup.md) for examples).
 
 #
 ## Replicate error using test deployment
 
-This example uses a [test-deploy.yaml](./test-deploy.yaml) deployment that uses `image: test-registry:443/test-debian` served from our test registry.
+This example uses a [test-deploy.yaml](./test-deploy.yaml) deployment with `image: test-registry:443/test-debian` served from our test registry.
 
 ```bash
 kubectl apply -f ./test-deploy.yaml
@@ -31,10 +31,13 @@ Events:
 This is due to the certificate not being trusted by nodes in the cluster. You can manually validate the fix on individual nodes using:
 
 ```bash
+# Use gcloud to SSH into a GKE node
 gcloud compute ssh gke-test-cluster-default-pool-82a3bf38-63d7 --tunnel-through-iap
-# Paste contents of certs/domain.crt file into /etc/ssl/certs/
+# Paste contents of certs/domain.crt file into /etc/ssl/certs/ file
 sudo vim /etc/ssl/certs/test-registry.crt 
+# Update trusted certificates
 sudo update-ca-certificates
+# Restart any running services that need to use the new root
 sudo systemctl restart docker containerd
 ```
 
@@ -43,7 +46,7 @@ sudo systemctl restart docker containerd
 
 GKE currently recomends using DaemonSets to [bootstrap GKE nodes](https://cloud.google.com/solutions/automatically-bootstrapping-gke-nodes-with-daemonsets). The solution here is based on the [GKE Node Initializer](https://github.com/GoogleCloudPlatform/solutions-gke-init-daemonsets-tutorial) example along with https://github.com/samos123/gke-node-customizations example. 
 
-You will need to update the ConfigMap in [node-initializer.yaml](./node-initializer.yaml) to replace `new-trusted-ca.crt` with your new public root certificate, and the when you apply the DaemonSet it runs an init container on all nodes to configure the new trusted root.
+You will need to update the ConfigMap in [node-initializer.yaml](./node-initializer.yaml) to replace `new-trusted-ca.crt` with your new public root certificate, and then when you apply the DaemonSet it runs an init container on all nodes to configure the new trusted root.
 
 ```bash
 # Apply yaml
@@ -58,6 +61,9 @@ node-initializer-4n2w7              ... Running ... gke-test-cluster-default-poo
 node-initializer-f9pl4              ... Running ... gke-test-cluster-default-pool-82a3bf38-0g5s
 test-private-image-6fcfc4864f-2ctjp ... Running ... gke-test-cluster-default-pool-82a3bf38-s1q5
 test-private-image-6fcfc4864f-6fntb ... Running ... gke-test-cluster-default-pool-82a3bf38-0g5s
+
+# If there are any issues, check for errors using:
+kubectl describe pod node-initializer-...
 
 # Check the container logs to see additional details on initializing nodes
 $ kubectl logs node-initializer-wp58j -c node-initializer
