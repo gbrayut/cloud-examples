@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-private-image
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: test-private-image
+  template:
+    metadata:
+      labels:
+        app: test-private-image
+    spec:
+      terminationGracePeriodSeconds: 0
+      # use to force testing on specific node
+      #nodeSelector:
+      #  kubernetes.io/hostname: gke-test-cluster-default-pool-82a3bf38-ffs3
+      containers:
+      - image: test-registry:443/test-debian
+        name: test-container        
+        resources:
+          requests:
+            cpu: 0.5
+            memory: 100Mi
+        # Just spin & wait forever
+        command: [ "/bin/bash", "-c", "--" ]
+        args: [ "tail -f /dev/null" ]

@@ -1,0 +1,119 @@
+# From https://cloud.google.com/solutions/automatically-bootstrapping-gke-nodes-with-daemonsets
+#
+# Copyright 2019 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: entrypoint
+  labels:
+    app: default-init
+data:
+  entrypoint.sh: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+    DEBIAN_FRONTEND=noninteractive
+    echo "Copying new trusted root CAs"
+    cp /scripts/*.crt /root/etc/ssl/certs
+    
+    echo "Running update-ca-certificates on node"
+    nsenter --target 1 --mount update-ca-certificates
+    
+    echo "Restart docker and containerd"
+    nsenter --target 1 --mount systemctl restart docker containerd
+
+    echo "Finished initializing node"
+
+# Replace this with the name and contents of the new trusted root public key
+  new-trusted-ca.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIIF6zCCA9OgAwIBAgIUTstDgYF3Lrbe7BC+Pah0eJVoQ1kwDQYJKoZIhvcNAQEL
+    BQAwWzEWMBQGA1UEAwwNdGVzdC1yZWdpc3RyeTEOMAwGA1UECAwFc3RhdGUxDTAL
+    BgNVBAcMBGNpdHkxEDAOBgNVBAoMB3Rlc3RpbmcxEDAOBgNVBAsMB2NvbXBhbnkw
+    HhcNMjEwNzI4MjAyODIwWhcNMjIwNzI4MjAyODIwWjBbMRYwFAYDVQQDDA10ZXN0
+    LXJlZ2lzdHJ5MQ4wDAYDVQQIDAVzdGF0ZTENMAsGA1UEBwwEY2l0eTEQMA4GA1UE
+    CgwHdGVzdGluZzEQMA4GA1UECwwHY29tcGFueTCCAiIwDQYJKoZIhvcNAQEBBQAD
+    ggIPADCCAgoCggIBAPEkdPyifyw/Nkr/9QDdozaVvgWjK0VtveOflki7idomY9Uz
+    8YsuHL4xJ5kiV3JQr060Oid6Qmkslyfu9Z9u2istxHVLfTtYPpQMsl/qLYpanL6n
+    Q4l7194scsdDTcMuJ2cz1ixkSkTn9pGxTF+/gVVi57MGxs1tyAdqqdk8ndVWcX+h
+    xuNXhIY/s/ZkmVgItV0FeE5qyQuK01hcSE+agqnG5o5ka2rnAboeXveiXk/dEAnP
+    KMvmhEBZZwLdVpOtuTvhMioUHdoZ3MaQGYWQmxOrOAOFGMqot45jWQBU9Qs7ALc1
+    s82uqSb8vWxgSnt18qJa6PQ3Fef2uhyDGX59Fk2ERR8rvR+ijjQdl1ZAL6GGsB5L
+    nJ0nh8UL+XRifG0E7sWpVVfR8xNZzlQH9ctJ5AdeQkwcn/51IKebWtjc59eKKTRP
+    FzAQVhq8IZorl+emvrLBHFhRIEcZKr5vrhWOwr3i9dCfF8NEGATUAur0cklHTnOQ
+    MEJpFTzv8DgJb10SoOReOxyhQD91EnbpyRVOiAD7X0AvWWfBJP5eXDVi6kMThzvY
+    1X99RMgAMdnxK9Wj7Vf8KsGHRoXlxYMrrRZHbtLJgmtpy3T1nahDYc64qC8ViRFT
+    9rLh2BXBm1UjXzdXDHW6i6ZZ68T3puUeMn8Yd+BL8QvRPqKFqvWQWY2VFANbAgMB
+    AAGjgaYwgaMwHQYDVR0OBBYEFGOEXL82mIpQ0DR9XSAQxzSO8OITMB8GA1UdIwQY
+    MBaAFGOEXL82mIpQ0DR9XSAQxzSO8OITMA8GA1UdEwEB/wQFMAMBAf8wUAYDVR0R
+    BEkwR4INdGVzdC1yZWdpc3RyeYI2dGVzdC1yZWdpc3RyeS51cy1jZW50cmFsMS1h
+    LmMuZGVtbzIwMjEtMzEwMTE5LmludGVybmFsMA0GCSqGSIb3DQEBCwUAA4ICAQBC
+    UOIO0e2b4gGFODtVFCeeyTMwEG5Jg32SGz3ln03Kok7HAOiIErBJK4J77GdkK4yG
+    TEE3DXM70/Fi3eybzWh3TIRtEY2nhnuPbaCRZcnC0SqgvLU9aESRrPxjQwC5+Igg
+    /KfnaAEgw8BSo3IXfEns/S7R92/Yw36t4GrX99JKumKkwNw0YIbRxWOaRG8dNGNV
+    aRfGQLXf2QNRnpwZxFXLxQVr1VcERVOcicyJGO3Ka9FJ/i2e2x8IE7ll/abts2ed
+    gp/lWZaPHYbB0LJOuCM34WoUy4GVhUTzibnFCXSR5V3deJGdTgVthm4ECv7GQpmg
+    ZWGA/DUbThDj+Jm15LSazAi3NMORNc5QdwONURvlG1s5KX2ZHzc2AcA2fXO6fFhD
+    0CvHLo21+H6m1Z31aJxXZJG+sTXTQ69fBJRRNEpIGXaMnx60E/BGOLNP3ZXmCYmX
+    6skqzU5FhKyW1WmADDWwGV6l9szE/YxPZwqIYJSSJ/pFlh+ZSvvhIk7giW/rmddT
+    muOBN6ZH1Z2aqXtYS6ByiZK/gf69fzPxtC2oX1TT5kdlXqVXki2eFNVPdFFN9gOr
+    2GGDLFwSrPi21QzeMB+/f1AS78644ZI8vGK+26l4o05+Jon0cz7OUcUv2oAQXBwi
+    JFtYtucENpvx3jOx06RKusNEu8qxhfY1XUrcwSgdMQ==
+    -----END CERTIFICATE-----
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-initializer
+  labels:
+    app: default-init
+spec:
+  selector:
+    matchLabels:
+      app: default-init
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        name: node-initializer
+        app: default-init
+    spec:
+      hostPID: true
+      volumes:
+      - name: root-mount
+        hostPath:
+          path: /
+      - name: entrypoint
+        configMap:
+          name: entrypoint
+          defaultMode: 0744
+      initContainers:
+      - image: ubuntu:18.04
+        name: node-initializer
+        command: ["/scripts/entrypoint.sh"]
+        env:
+        - name: ROOT_MOUNT_DIR
+          value: /root
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: root-mount
+          mountPath: /root
+        - name: entrypoint
+          mountPath: /scripts
+      containers:
+      - image: "gcr.io/google-containers/pause:2.0"
+        name: pause
