@@ -4,7 +4,8 @@ metadata:
   name: overprovisioning
 # Can use negative values, but default cluster autoscalers will not scale-up node pool for pending pods with negative values.
 # use zero here for lowest priority that still triggers scale up. Note https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/#notes-about-podpriority-and-existing-clusters
-value: 0
+# must be greater than -10 from https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/FAQ.md#how-does-cluster-autoscaler-work-with-pod-priority-and-preemption
+value: -1 
 globalDefault: false
 description: "Lowest priority class that will be used by overprovisioning for float capacity."
 # new optional beta feature in v1.19. See https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/#non-preempting-priority-class

@@ -10,7 +10,7 @@ metadata:
   name: overprovisioning
   namespace: overprovisioning
 spec:
-  replicas: 2
+  replicas: 12
   selector:
     matchLabels:
       run: overprovisioning
@@ -26,7 +26,7 @@ spec:
         name: reserve-resources
         resources:
           requests:
-            cpu: 1
-            memory: 1Gi
+            cpu: 0.3
+            memory: 200Mi
       priorityClassName: overprovisioning
       terminationGracePeriodSeconds: 0

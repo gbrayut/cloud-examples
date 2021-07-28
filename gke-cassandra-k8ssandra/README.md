@@ -52,9 +52,9 @@ gcloud compute firewall-rules create allow-ssh-ingress-from-iap \
   --source-ranges=35.235.240.0/20
 
 
-gcloud beta container --project "demo2021-310119" clusters create "gke-cass" --region "us-central1" \
+gcloud beta container --project "demo2021-310119" clusters create "cassandra" --region "us-central1" \
   --no-enable-basic-auth --cluster-version "1.20.5-gke.1300" --release-channel "rapid" --enable-private-nodes \
-  --master-ipv4-cidr "172.16.0.0/28" --machine-type "e2-standard-4" --image-type "COS_CONTAINERD" --disk-type "pd-standard" --disk-size "100" \
+  --master-ipv4-cidr "172.16.0.0/28" --machine-type "e2-standard-2" --image-type "COS_CONTAINERD" --disk-type "pd-standard" --disk-size "100" \
   --metadata disable-legacy-endpoints=true --num-nodes "1" --enable-stackdriver-kubernetes \
   --scopes "https://www.googleapis.com/auth/devstorage.read_only","https://www.googleapis.com/auth/logging.write","https://www.googleapis.com/auth/monitoring","https://www.googleapis.com/auth/servicecontrol","https://www.googleapis.com/auth/service.management.readonly","https://www.googleapis.com/auth/trace.append" \
   --enable-ip-alias --network "projects/demo2021-310119/global/networks/default" --subnetwork "projects/demo2021-310119/regions/us-central1/subnetworks/default" \
@@ -145,9 +145,29 @@ Token                  : (invoke with -T/--tokens to see all 256 tokens)
 
 # see also https://docs.k8ssandra.io/quickstarts/developer/
 
+# Can edit the CRD to make changes to the cassandra cluser. Increasing size from 3 -> 6 or 24 will expand the cassandra nodes (really pods in the stateful set) for each rack
+kubectl edit CassandraDataCenter dc1
+
+k get pods -o wide --selector cassandra.datastax.com/rack
+NAME                                READY   STATUS    RESTARTS   AGE    IP            NODE                                      NOMINATED NODE   READINESS GATES
+cass-test-dc1-us-central1-a-sts-0   2/2     Running   0          65m    10.168.1.11   gke-cassandra-default-pool-9c76d3c9-ct4x   <none>           <none>
+cass-test-dc1-us-central1-a-sts-1   1/2     Running   0          4m3s   10.168.1.12   gke-cassandra-default-pool-9c76d3c9-ct4x   <none>           <none>
+cass-test-dc1-us-central1-b-sts-0   2/2     Running   0          65m    10.168.2.11   gke-cassandra-default-pool-a49f5225-cpnf   <none>           <none>
+cass-test-dc1-us-central1-b-sts-1   1/2     Running   0          4m3s   10.168.2.13   gke-cassandra-default-pool-a49f5225-cpnf   <none>           <none>
+cass-test-dc1-us-central1-f-sts-0   2/2     Running   0          65m    10.168.0.9    gke-cassandra-default-pool-5e67a467-zs9f   <none>           <none>
+cass-test-dc1-us-central1-f-sts-1   1/2     Running   0          4m3s   10.168.0.11   gke-cassandra-default-pool-5e67a467-zs9f   <none>           <none>
+
+and you can use the nodetool commands above to see when the new servers join the cassandra cluster (UJ instead of UN). It seems to add them one at a time, and takes 4-8 minutes for each node
+
+Can also see events from the operator using
+kubectl describe CassandraDataCenter dc1
 ```
 #
 ## Next steps
 asfd
 
 nodes label is topology.gke.io/zone, pod label is cassandra.datastax.com/rack
+
+use https://cloud.google.com/iap/docs/enabling-kubernetes-howto for grafana/etc
+
+multiple datacenters in different namespaces https://github.com/datastax/cass-operator/issues/174 and https://github.com/datastax/cass-operator/pull/182/files#diff-b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5R189 (still a WIP)

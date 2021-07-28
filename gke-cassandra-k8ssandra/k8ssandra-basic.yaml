@@ -1,4 +1,5 @@
 # from https://docs.k8ssandra.io/install/gke/#generate-gkevaluesyaml
+# see also https://github.com/datastax/cass-operator/blob/master/operator/example-cassdc-yaml/cassandra-3.11.x/example-cassdc-full.yaml
 cassandra:
   # Version of Apache Cassandra to deploy
   version: "3.11.10"
@@ -20,9 +21,10 @@ cassandra:
     size: 1G
     newGenSize: 1G
   
+  # For testing we're using 1/4th core request but let it burst up to 1 core. For production should have request=limit and reserve most of a full node
   resources:
     requests:
-      cpu: 1000m
+      cpu: 250m
       memory: 2Gi
     limits:
       cpu: 1000m
@@ -33,7 +35,7 @@ cassandra:
   # cluster is deployed.
   datacenters:
   - name: dc1
-    size: 3
+    size: 3 # one per rack. Can use `kubectl edit CassandraDataCenter dc1` later to resize cluster
     racks:
     - name: us-central1-f
       affinityLabels:
