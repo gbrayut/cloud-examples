@@ -13,6 +13,7 @@ spec:
         app: test-private-image
     spec:
       terminationGracePeriodSeconds: 0
+      #runtimeClassName: gvisor
       # use to force testing on specific node
       #nodeSelector:
       #  kubernetes.io/hostname: gke-test-cluster-default-pool-82a3bf38-ffs3

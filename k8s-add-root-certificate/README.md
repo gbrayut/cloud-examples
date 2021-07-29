@@ -2,9 +2,9 @@
 
 ## Overview
 
-If you try and use a container registry with a private or self signed TLS certificate, you likely will see "Error: ErrImagePull" and "x509: certificate signed by unknown authority" errors. This example shows how to work around those issues by initializing GKE nodes to trust your public root certificate.
+If you try and use a container registry with a private or self signed TLS certificate, you likely will see `Error: ErrImagePull` and `x509: certificate signed by unknown authority` errors. This example shows how to work around those issues by initializing GKE nodes to trust your public root certificate.
 
-You will need a private registry and Kubernetes cluster for testing. See [Setup notes](./setup.md) for examples).
+You will need a private registry and Kubernetes cluster for testing. See [Setup notes](./setup.md) and [common steps](../common/) for examples.
 
 #
 ## Replicate error using test deployment
@@ -84,4 +84,4 @@ kubectl delete daemonset node-initializer
 #
 ## Known Issues
 
-Since pods can be scheduled to nodes before the DaemonSet has finished initializing, you likely will  still ErrImagePull and ImagePullBackoff errors. You can use https://github.com/uswitch/nidhogg to taint nodes to try and prevent pods from being scheduled, but that is also implemented via DaemonSet and may still have race conditions.
+Since pods can be scheduled to nodes before the DaemonSet has finished initializing, you may still see ErrImagePull and ImagePullBackoff errors. You can try to use https://github.com/uswitch/nidhogg to taint nodes and prevent pods from being scheduled, but that is also implemented via DaemonSet and may still have race conditions. There are kubelet flags for registering nodes with taints (not available in GKE) or you can use a [mutating webhook](https://github.com/uswitch/nidhogg/issues/24#issuecomment-680956438).

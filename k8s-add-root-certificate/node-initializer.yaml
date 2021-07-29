@@ -1,6 +1,6 @@
 # From https://cloud.google.com/solutions/automatically-bootstrapping-gke-nodes-with-daemonsets
 #
-# Copyright 2019 Google LLC
+# Copyright 2021 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -91,6 +91,18 @@ spec:
         name: node-initializer
         app: default-init
     spec:
+      # Script currently designed for just cos_containerd nodes (including gvisor nodes)
+      # but could be expanded to support nodes labeled kubernetes.io/os: linux
+      nodeSelector:
+        cloud.google.com/gke-os-distribution: cos
+        cloud.google.com/gke-container-runtime: containerd
+      # Bypass all NoSchedule/NoExecute taints to create pod as early as possible
+      tolerations:
+        - effect: NoSchedule
+          operator: Exists
+        - effect: NoExecute
+          operator: Exists
+      # Need host PID namespace to use nsenter
       hostPID: true
       volumes:
       - name: root-mount
@@ -108,6 +120,7 @@ spec:
         - name: ROOT_MOUNT_DIR
           value: /root
         securityContext:
+          # Run as root for write access to certs folder
           privileged: true
         volumeMounts:
         - name: root-mount
