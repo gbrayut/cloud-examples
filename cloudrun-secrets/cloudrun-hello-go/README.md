@@ -4,7 +4,7 @@ Note: this assumes the project in your [app.tf](./app.tf) file already exists an
 
 ## Overview
 
-Based on cloud_run_service [secret examples](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/cloud_run_service#example-usage---cloud-run-service-secret-volumes). This uses a modified version of the echoserver container to print out the Environment Variables and mounted Volumes for accessing secrets.
+Based on [guillaumeblaquiere/cloudrun-hello-go](https://github.com/guillaumeblaquiere/cloudrun-hello-go) this shows how to print out the Environment Variables and mounted Volumes for accessing secrets, as well as basic API access.
 
 > Mount each secret as a volume, which makes the secret available to the container as files. Reading a volume always fetches the secret value from Secret Manager, so it can be used with the latest version. This method also works well with secret rotation.
 >

@@ -47,9 +47,12 @@ func main() {
 		if projectFound {
 			fmt.Fprint(w, " in the GCP project "+project)
 		}
+
+		// Option 1: env vars
 		fmt.Fprint(w, "\n\nEnvironment:\n")
 		fmt.Fprint(w, strings.Join(os.Environ(), "\n"))
 
+		// Option 2: Mounted Volume
 		fmt.Fprint(w, "\n\nSecrets:\n")
 		files, err := ioutil.ReadDir(path)
 		if err != nil {
@@ -64,6 +67,9 @@ func main() {
 				fmt.Fprintf(w, "%s=%s\n", file.Name(), val)
 			}
 		}
+
+		// Option 3: Direct API access
+		// TODO: Add API example based on https://github.com/GoogleCloudPlatform/golang-samples/blob/6c46053696035e0b5d210806f005c43da9bcb6ee/secretmanager/quickstart/quickstart.go#L81
 	})
 
 	port := os.Getenv("PORT")

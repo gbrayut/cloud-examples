@@ -72,7 +72,7 @@ SECRET_ENV_VAR_FAKE=secret-data
 secret-data
 ```
 
-The above is just a sample output (statically embeded in the config file at [startup](./cloudrun-secrets/app.tf#L58)) which also shows the three ways of accessing secrets:
+The above is just a sample output (statically embeded in the config file at [startup](./app.tf#L58)) which also shows the three ways of accessing secrets:
 
 > Mount each secret as a volume, which makes the secret available to the container as files. Reading a volume always fetches the secret value from Secret Manager, so it can be used with the latest version. This method also works well with secret rotation.
 >
