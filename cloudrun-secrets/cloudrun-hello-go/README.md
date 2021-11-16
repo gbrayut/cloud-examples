@@ -1,6 +1,6 @@
 # Cloud Run terraform example
 
-Note: this assumes the project in your [app.tf](./app.tf) file already exists and is already linked to a billing account and that the account used to run terraform has [Cloud Run permissions](https://cloud.google.com/run/docs/reference/iam/roles#additional-configuration).
+Note: this assumes the project in your [app.tf](../app.tf) file already exists and is already linked to a billing account and that the account used to run terraform has [Cloud Run permissions](https://cloud.google.com/run/docs/reference/iam/roles#additional-configuration).
 
 ## Overview
 
