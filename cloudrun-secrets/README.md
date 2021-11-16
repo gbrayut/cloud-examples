@@ -79,4 +79,4 @@ The above is just a sample output (statically embeded in the config file at [sta
 > Pass a secret using environment variables. Environment variables are resolved at instance startup time, so if you use this method, Google recommends that you pin the secret to a particular version rather than using latest.
 For more information, refer to the Secret Manager best practices document.
 
-And the third being direct access via [Cloud APIs](https://cloud.google.com/secret-manager/docs/reference/libraries). This approach can be a bit more work but give full contron and is slightly more secure since it [prevents](https://cloud.google.com/secret-manager/docs/best-practices#coding_practices) some attack vectors, but for the vast majority of case any of the above should be fine
+And the third being direct access via [Cloud APIs](https://cloud.google.com/secret-manager/docs/reference/libraries). This approach can be a bit more work but give full contron and is slightly more secure since it [prevents](https://cloud.google.com/secret-manager/docs/best-practices#coding_practices) some attack vectors, but for the vast majority of case any of the above should be fine.
