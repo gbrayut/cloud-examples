@@ -19,6 +19,7 @@ resource "google_service_account" "mycloudrun" {
 resource "google_project_iam_member" "project" {
   role   = "roles/cloudsql.client"
   member = "serviceAccount:${google_service_account.mycloudrun.email}"
+  project = google_cloud_run_service.myservice.project
 }
 
 # Policy to allow public access to Cloud Run endpoint
@@ -61,5 +62,5 @@ resource "google_cloud_run_service" "myservice" {
 }
 
 output "url" {
-  value = "${google_cloud_run_service.myservice.status[0].url}"
+  value = google_cloud_run_service.myservice.status[0].url
 }
