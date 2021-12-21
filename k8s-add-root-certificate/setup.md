@@ -37,10 +37,11 @@ docker run -d --restart=always --name registry \
   -e REGISTRY_HTTP_TLS_KEY=/certs/domain.key \
   -p 443:8443 registry:2
 
-# Configure VM to trust the new cert
+# Configure VM to trust the new cert and setup hosts file if DNS is not available (but the vm name should resolve by default)
 sudo cp certs/domain.crt /usr/local/share/ca-certificates/
-sudo update-ca-certificate
+sudo update-ca-certificates
 sudo systemctl restart docker
+#echo -e "127.0.0.1\ttest-registry" | sudo tee -a /etc/hosts
 
 # copy an image to the registry 
 # https://docs.docker.com/registry/deploying/#copy-an-image-from-docker-hub-to-your-registry
