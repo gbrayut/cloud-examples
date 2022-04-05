@@ -23,6 +23,8 @@ resource "google_compute_subnetwork" "subnet" {
   project       = google_project.my_gke_project.name
   ip_cidr_range = "10.10.0.0/24"
 
+  private_ip_google_access = true
+
   depends_on = [
     google_compute_network.vpc
   ]
