@@ -35,12 +35,12 @@ curl -vs 10.1.1.5:8080 | head -n 35
 curl -vs 10.1.2.13:9090 | head -n 35
 curl -vs 10.1.2.12:9999 | head -n 35
 ```
-See [istio-testing/echoserver-testing.txt](./istio-testing/echoserver-testing.txt) for example output
+See [echoserver-testing.txt](./echoserver-testing.txt) for example output
 
 ## istioctl
 
 [istioctl](https://istio.io/latest/docs/ops/diagnostic-tools/istioctl/#get-proxy-configuration) can be used to see information about envoy sidecar proxy configuration in each pod.
-See an example of output in [istioctl-proxy-config.txt](./istio-testing/istioctl-proxy-config.txt).
+See an example of output in [istioctl-proxy-config.txt](./istioctl-proxy-config.txt).
 
 ```bash
 # View cluster and other envoy config settings for a pod.namespace
@@ -67,8 +67,8 @@ istioctl x describe pod whereami-758fc65995-62spk.testing
 
 Use annotations to [exclude traffic](https://cloud.google.com/service-mesh/docs/security/anthos-service-mesh-security-best-practices?hl=en#securely-handle-anthos-service-mesh-policy-exceptions) from the mesh. To verify it is working, see the following examples based on above testing pods
 
-* [Init logs](./istio-testing/iptables-init-logs.txt) either via istio-init container or istio-cni-node daemonset
-* [Direct inspection](istio-testing/iptable-inspect-rules.txt) via SSH into node and entering PID/Network namespace
+* [Init logs](./iptables-init-logs.txt) either via istio-init container or istio-cni-node daemonset
+* [Direct inspection](./iptable-inspect-rules.txt) via SSH into node and entering PID/Network namespace
 
 ## misc
 
