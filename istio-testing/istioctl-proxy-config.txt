@@ -1,0 +1,122 @@
+istioctl proxy-config all whereami-758fc65995-62spk.testing
+SERVICE FQDN                                                                           PORT      SUBSET     DIRECTION     TYPE             DESTINATION RULE
+                                                                                       8080      -          inbound       ORIGINAL_DST     
+BlackHoleCluster                                                                       -         -          -             STATIC           
+InboundPassthroughClusterIpv4                                                          -         -          -             ORIGINAL_DST     
+PassthroughCluster                                                                     -         -          -             ORIGINAL_DST     
+abandon-on-uninstall.cnrm-system.svc.cluster.local                                     443       -          outbound      EDS              
+agent                                                                                  -         -          -             STATIC           
+antrea.kube-system.svc.cluster.local                                                   443       -          outbound      EDS              
+canonical-service-controller-manager-metrics-service.asm-system.svc.cluster.local      8443      -          outbound      EDS              
+cnrm-deletiondefender.cnrm-system.svc.cluster.local                                    443       -          outbound      EDS              
+cnrm-resource-stats-recorder-service.cnrm-system.svc.cluster.local                     8888      -          outbound      EDS              
+cnrm-validating-webhook.cnrm-system.svc.cluster.local                                  443       -          outbound      EDS              
+configconnector-operator-service.configconnector-operator-system.svc.cluster.local     443       -          outbound      EDS              
+default-http-backend.kube-system.svc.cluster.local                                     80        -          outbound      EDS              
+echo8080.istio-system.svc.cluster.local                                                8080      -          outbound      EDS              
+echo9090.istio-system.svc.cluster.local                                                9090      -          outbound      EDS              
+echo9999.istio-system.svc.cluster.local                                                9999      -          outbound      EDS              
+gke-connect-monitoring.gke-connect.svc.cluster.local                                   8080      -          outbound      EDS              
+istiod-asm-1126-3.istio-system.svc.cluster.local                                       443       -          outbound      EDS              
+istiod-asm-1126-3.istio-system.svc.cluster.local                                       15010     -          outbound      EDS              
+istiod-asm-1126-3.istio-system.svc.cluster.local                                       15012     -          outbound      EDS              
+istiod-asm-1126-3.istio-system.svc.cluster.local                                       15014     -          outbound      EDS              
+istiod-asm-1132-5.istio-system.svc.cluster.local                                       443       -          outbound      EDS              
+istiod-asm-1132-5.istio-system.svc.cluster.local                                       15010     -          outbound      EDS              
+istiod-asm-1132-5.istio-system.svc.cluster.local                                       15012     -          outbound      EDS              
+istiod-asm-1132-5.istio-system.svc.cluster.local                                       15014     -          outbound      EDS              
+istiod.istio-system.svc.cluster.local                                                  443       -          outbound      EDS              
+istiod.istio-system.svc.cluster.local                                                  15010     -          outbound      EDS              
+istiod.istio-system.svc.cluster.local                                                  15012     -          outbound      EDS              
+istiod.istio-system.svc.cluster.local                                                  15014     -          outbound      EDS              
+kube-dns.kube-system.svc.cluster.local                                                 53        -          outbound      EDS              
+kubernetes.default.svc.cluster.local                                                   443       -          outbound      EDS              
+metrics-server.kube-system.svc.cluster.local                                           443       -          outbound      EDS              
+prometheus_stats                                                                       -         -          -             STATIC           
+sds-grpc                                                                               -         -          -             STATIC           
+whereami.testing.svc.cluster.local                                                     80        -          outbound      EDS              
+xds-grpc                                                                               -         -          -             STATIC           
+zipkin                                                                                 -         -          -             STRICT_DNS       
+
+ADDRESS      PORT  MATCH                                                                                           DESTINATION
+10.1.128.10  53    ALL                                                                                             Cluster: outbound|53||kube-dns.kube-system.svc.cluster.local
+0.0.0.0      80    Trans: raw_buffer; App: http/1.1,h2c                                                            Route: 80
+0.0.0.0      80    ALL                                                                                             PassthroughCluster
+10.1.128.1   443   ALL                                                                                             Cluster: outbound|443||kubernetes.default.svc.cluster.local
+10.1.132.243 443   Trans: raw_buffer; App: http/1.1,h2c                                                            Route: configconnector-operator-service.configconnector-operator-system.svc.cluster.local:443
+10.1.132.243 443   ALL                                                                                             Cluster: outbound|443||configconnector-operator-service.configconnector-operator-system.svc.cluster.local
+10.1.135.105 443   Trans: raw_buffer; App: http/1.1,h2c                                                            Route: antrea.kube-system.svc.cluster.local:443
+10.1.135.105 443   ALL                                                                                             Cluster: outbound|443||antrea.kube-system.svc.cluster.local
+10.1.139.65  443   Trans: raw_buffer; App: http/1.1,h2c                                                            Route: metrics-server.kube-system.svc.cluster.local:443
+10.1.139.65  443   ALL                                                                                             Cluster: outbound|443||metrics-server.kube-system.svc.cluster.local
+10.1.145.176 443   ALL                                                                                             Cluster: outbound|443||istiod-asm-1132-5.istio-system.svc.cluster.local
+10.1.154.140 443   Trans: raw_buffer; App: http/1.1,h2c                                                            Route: cnrm-deletiondefender.cnrm-system.svc.cluster.local:443
+10.1.154.140 443   ALL                                                                                             Cluster: outbound|443||cnrm-deletiondefender.cnrm-system.svc.cluster.local
+10.1.159.223 443   ALL                                                                                             Cluster: outbound|443||istiod-asm-1126-3.istio-system.svc.cluster.local
+10.1.207.21  443   Trans: raw_buffer; App: http/1.1,h2c                                                            Route: cnrm-validating-webhook.cnrm-system.svc.cluster.local:443
+10.1.207.21  443   ALL                                                                                             Cluster: outbound|443||cnrm-validating-webhook.cnrm-system.svc.cluster.local
+10.1.216.95  443   Trans: raw_buffer; App: http/1.1,h2c                                                            Route: abandon-on-uninstall.cnrm-system.svc.cluster.local:443
+10.1.216.95  443   ALL                                                                                             Cluster: outbound|443||abandon-on-uninstall.cnrm-system.svc.cluster.local
+10.1.224.208 443   ALL                                                                                             Cluster: outbound|443||istiod.istio-system.svc.cluster.local
+10.1.145.51  8080  Trans: raw_buffer; App: http/1.1,h2c                                                            Route: echo8080.istio-system.svc.cluster.local:8080
+10.1.145.51  8080  ALL                                                                                             Cluster: outbound|8080||echo8080.istio-system.svc.cluster.local
+10.1.217.210 8080  Trans: raw_buffer; App: http/1.1,h2c                                                            Route: gke-connect-monitoring.gke-connect.svc.cluster.local:8080
+10.1.217.210 8080  ALL                                                                                             Cluster: outbound|8080||gke-connect-monitoring.gke-connect.svc.cluster.local
+10.1.145.242 8443  ALL                                                                                             Cluster: outbound|8443||canonical-service-controller-manager-metrics-service.asm-system.svc.cluster.local
+10.1.242.63  8888  Trans: raw_buffer; App: http/1.1,h2c                                                            Route: cnrm-resource-stats-recorder-service.cnrm-system.svc.cluster.local:8888
+10.1.242.63  8888  ALL                                                                                             Cluster: outbound|8888||cnrm-resource-stats-recorder-service.cnrm-system.svc.cluster.local
+10.1.227.8   9090  Trans: raw_buffer; App: http/1.1,h2c                                                            Route: echo9090.istio-system.svc.cluster.local:9090
+10.1.227.8   9090  ALL                                                                                             Cluster: outbound|9090||echo9090.istio-system.svc.cluster.local
+10.1.243.191 9999  Trans: raw_buffer; App: http/1.1,h2c                                                            Route: echo9999.istio-system.svc.cluster.local:9999
+10.1.243.191 9999  ALL                                                                                             Cluster: outbound|9999||echo9999.istio-system.svc.cluster.local
+0.0.0.0      15001 ALL                                                                                             PassthroughCluster
+0.0.0.0      15001 Addr: *:15001                                                                                   Non-HTTP/Non-TCP
+0.0.0.0      15006 Addr: *:15006                                                                                   Non-HTTP/Non-TCP
+0.0.0.0      15006 Trans: tls; App: istio-http/1.0,istio-http/1.1,istio-h2; Addr: 0.0.0.0/0                        InboundPassthroughClusterIpv4
+0.0.0.0      15006 Trans: raw_buffer; App: http/1.1,h2c; Addr: 0.0.0.0/0                                           InboundPassthroughClusterIpv4
+0.0.0.0      15006 Trans: tls; App: TCP TLS; Addr: 0.0.0.0/0                                                       InboundPassthroughClusterIpv4
+0.0.0.0      15006 Trans: raw_buffer; Addr: 0.0.0.0/0                                                              InboundPassthroughClusterIpv4
+0.0.0.0      15006 Trans: tls; Addr: 0.0.0.0/0                                                                     InboundPassthroughClusterIpv4
+0.0.0.0      15006 Trans: tls; App: istio,istio-peer-exchange,istio-http/1.0,istio-http/1.1,istio-h2; Addr: *:8080 Cluster: inbound|8080||
+0.0.0.0      15006 Trans: raw_buffer; Addr: *:8080                                                                 Cluster: inbound|8080||
+0.0.0.0      15010 Trans: raw_buffer; App: http/1.1,h2c                                                            Route: 15010
+0.0.0.0      15010 ALL                                                                                             PassthroughCluster
+10.1.145.176 15012 ALL                                                                                             Cluster: outbound|15012||istiod-asm-1132-5.istio-system.svc.cluster.local
+10.1.159.223 15012 ALL                                                                                             Cluster: outbound|15012||istiod-asm-1126-3.istio-system.svc.cluster.local
+10.1.224.208 15012 ALL                                                                                             Cluster: outbound|15012||istiod.istio-system.svc.cluster.local
+0.0.0.0      15014 Trans: raw_buffer; App: http/1.1,h2c                                                            Route: 15014
+0.0.0.0      15014 ALL                                                                                             PassthroughCluster
+0.0.0.0      15021 ALL                                                                                             Inline Route: /healthz/ready*
+0.0.0.0      15090 ALL                                                                                             Inline Route: /stats/prometheus*
+
+NAME                                                                                       DOMAINS                                            MATCH                  VIRTUAL SERVICE
+80                                                                                         default-http-backend.kube-system, 10.1.243.207     /*                     
+80                                                                                         whereami, whereami.testing + 1 more...             /*                     
+metrics-server.kube-system.svc.cluster.local:443                                           *                                                  /*                     
+                                                                                           *                                                  /healthz/ready*        
+echo9999.istio-system.svc.cluster.local:9999                                               *                                                  /*                     
+cnrm-resource-stats-recorder-service.cnrm-system.svc.cluster.local:8888                    *                                                  /*                     
+echo9090.istio-system.svc.cluster.local:9090                                               *                                                  /*                     
+abandon-on-uninstall.cnrm-system.svc.cluster.local:443                                     *                                                  /*                     
+gke-connect-monitoring.gke-connect.svc.cluster.local:8080                                  *                                                  /*                     
+cnrm-deletiondefender.cnrm-system.svc.cluster.local:443                                    *                                                  /*                     
+antrea.kube-system.svc.cluster.local:443                                                   *                                                  /*                     
+configconnector-operator-service.configconnector-operator-system.svc.cluster.local:443     *                                                  /*                     
+echo8080.istio-system.svc.cluster.local:8080                                               *                                                  /*                     
+InboundPassthroughClusterIpv4                                                              *                                                  /*                     
+cnrm-validating-webhook.cnrm-system.svc.cluster.local:443                                  *                                                  /*                     
+inbound|8080||                                                                             *                                                  /*                     
+inbound|8080||                                                                             *                                                  /*                     
+                                                                                           *                                                  /stats/prometheus*     
+15010                                                                                      istiod-asm-1126-3.istio-system, 10.1.159.223       /*                     
+15010                                                                                      istiod-asm-1132-5.istio-system, 10.1.145.176       /*                     
+15010                                                                                      istiod.istio-system, 10.1.224.208                  /*                     
+15014                                                                                      istiod-asm-1126-3.istio-system, 10.1.159.223       /*                     
+15014                                                                                      istiod-asm-1132-5.istio-system, 10.1.145.176       /*                     
+15014                                                                                      istiod.istio-system, 10.1.224.208                  /*                     
+InboundPassthroughClusterIpv4                                                              *                                                  /*                     
+
+RESOURCE NAME     TYPE           STATUS     VALID CERT     SERIAL NUMBER                                    NOT AFTER                NOT BEFORE
+default           Cert Chain     ACTIVE     true           58243032042430841339101463598059933857444656     2022-06-15T00:53:33Z     2022-06-14T00:48:33Z
+ROOTCA            CA             ACTIVE     true           301664292232670221160552955138159552579          2032-06-06T20:27:15Z     2022-06-09T20:27:15Z
+

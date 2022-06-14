@@ -1,0 +1,118 @@
+# Here is a request that is proxied and part of the mesh, as evident via the X-B* Headers and different Requesting IP port
+appuser@whereami-758fc65995-62spk:/app$ curl -vs --local-port 18080 echo8080.istio-system.svc:8080 | head -n 35
+*   Trying 10.1.145.51:8080...
+* Local port: 18080
+* Connected to echo8080.istio-system.svc (10.1.145.51) port 8080 (#0)
+> GET / HTTP/1.1
+> Host: echo8080.istio-system.svc:8080
+> User-Agent: curl/7.81.0
+> Accept: */*
+> 
+* Mark bundle as not supporting multiuse
+< HTTP/1.1 200 OK
+< content-type: text/plain
+< x-real-server: echo-server
+< date: Tue, 14 Jun 2022 02:03:53 GMT
+< x-envoy-upstream-service-time: 3
+< server: envoy
+< transfer-encoding: chunked
+< 
+{ [7842 bytes data]
+* Connection #0 to host echo8080.istio-system.svc left intact
+Welcome to echo-server!  Here's what I know.
+  > Head to /ws for interactive websocket echo!
+
+-> My hostname is: echo8080
+
+-> Requesting IP: 10.1.5.96:53448
+
+-> Request Headers | 
+
+  HTTP/1.1 GET /
+
+  Host: echo8080.istio-system.svc:8080
+  Accept: */*
+  User-Agent: curl/7.81.0
+  X-B3-Sampled: 0
+  X-B3-Spanid: 2cb3b36c13b73e0c
+  X-B3-Traceid: c5d63911265912c82cb3b36c13b73e0c
+  X-Envoy-Attempt-Count: 1
+  X-Envoy-Decorator-Operation: echo8080.istio-system.svc.cluster.local:8080/*
+  X-Envoy-Peer-Metadata-Id: sidecar~10.1.5.96~whereami-758fc65995-62spk.testing~testing.svc.cluster.local
+  X-Envoy-Peer-Metadata: ChwKDkFQUF9DT05UQUlORVJTEgoaCGZyb250ZW5kCjwKCkNMVVNURVJfSUQSLhosY24tZ3JlZ2JyYXktYm91dGlxdWUtdXMtY2VudHJhbDEtZ2tlLWNlbnRyYWwKHwoNSVNUSU9fVkVSU0lPThIOGgwxLjEzLjItYXNtLjUKhAIKBkxBQkVMUxL5ASr2AQoRCgNhcHASChoId2hlcmVhbWkKIQoRcG9kLXRlbXBsYXRlLWhhc2gSDBoKNzU4ZmM2NTk5NQokChlzZWN1cml0eS5pc3Rpby5pby90bHNNb2RlEgcaBWlzdGlvCi0KH3NlcnZpY2UuaXN0aW8uaW8vY2Fub25pY2FsLW5hbWUSChoId2hlcmVhbWkKLwojc2VydmljZS5pc3Rpby5pby9jYW5vbmljYWwtcmV2aXNpb24SCBoGbGF0ZXN0CjgKGXRvcG9sb2d5LmlzdGlvLmlvL25ldHdvcmsSGxoZZ3JlZ2JyYXktYm91dGlxdWUtZGVmYXVsdAoeCgdNRVNIX0lEEhMaEXByb2otNDE0MDA1NjQ2MDIzCiMKBE5BTUUSGxoZd2hlcmVhbWktNzU4ZmM2NTk5NS02MnNwawoWCglOQU1FU1BBQ0USCRoHdGVzdGluZwpMCgVPV05FUhJDGkFrdWJlcm5ldGVzOi8vYXBpcy9hcHBzL3YxL25hbWVzcGFjZXMvdGVzdGluZy9kZXBsb3ltZW50cy93aGVyZWFtaQrcAgoRUExBVEZPUk1fTUVUQURBVEESxgIqwwIKLAoTZ2NwX2djZV9pbnN0YW5jZV9pZBIVGhM3OTg4MDY2NjgwMzQ0NDA2ODE3CiUKFGdjcF9na2VfY2x1c3Rlcl9uYW1lEg0aC2drZS1jZW50cmFsCoIBChNnY3BfZ2tlX2NsdXN0ZXJfdXJsEmsaaWh0dHBzOi8vY29udGFpbmVyLmdvb2dsZWFwaXMuY29tL3YxL3Byb2plY3RzL2dyZWdicmF5LWJvdXRpcXVlL2xvY2F0aW9ucy91cy1jZW50cmFsMS9jbHVzdGVycy9na2UtY2VudHJhbAodCgxnY3BfbG9jYXRpb24SDRoLdXMtY2VudHJhbDEKIgoLZ2NwX3Byb2plY3QSExoRZ3JlZ2JyYXktYm91dGlxdWUKJAoSZ2NwX3Byb2plY3RfbnVtYmVyEg4aDDQxNDAwNTY0NjAyMwobCg1XT1JLTE9BRF9OQU1FEgoaCHdoZXJlYW1p
+  X-Forwarded-Proto: http
+  X-Request-Id: fba336b2-087f-40c1-b54a-9ede0ed932f1
+
+
+-> Response Headers | 
+
+  Content-Type: text/plain
+  X-Real-Server: echo-server
+
+  > Note that you may also see "Transfer-Encoding" and "Date"!
+
+
+-> My environment |
+  ADD_HEADERS={"X-Real-Server": "echo-server"}
+
+# Also notice if you try and run it again immediatly it will fail due to binding issues (port is in timewait state for 60 seconds, which is normal for any TCP socket)
+appuser@whereami-758fc65995-62spk:/app$ curl -vs --local-port 18080 echo8080.istio-system.svc:8080 | head -n 35
+*   Trying 10.1.145.51:8080...
+* bind failed with errno 98: Address in use
+* Closing connection 0
+
+# After 60 seconds it would start working again. Or if you excluded --local-port it would always work (picking a random ephemeral src port each time)
+
+
+# Testing directly against the pod IP is similar, still proxied via PassthroughCluster but no X-* headers this time
+appuser@whereami-758fc65995-62spk:/app$ curl -vs --local-port 28080 10.1.4.22:8080 | head -n 35
+*   Trying 10.1.4.22:8080...
+* Local port: 28080
+... omitted ....
+-> Requesting IP: 10.1.5.96:54124             # NOTICE: this is not our local port. So this is still using envoy proxy
+
+-> Request Headers | 
+
+  HTTP/1.1 GET /
+
+  Host: 10.1.4.22:8080
+  Accept: */*
+  User-Agent: curl/7.81.0
+
+# But now there are no extra X-* request headers ^
+
+# If we try running it again we see the same Address in use error (expected side effect of curl using static local-port)
+appuser@whereami-758fc65995-62spk:/app$ curl -vs --local-port 28080 10.1.4.22:8080 | head -n 35
+*   Trying 10.1.4.22:8080...
+* bind failed with errno 98: Address in use
+* Closing connection 0
+
+
+
+# Since our client pod had 9999 in excludeOutboundPorts, we can use that to try a direct connection (bypass envoy)
+appuser@whereami-758fc65995-62spk:/app$ curl -vs --local-port 19999 echo9999.istio-system.svc:9999 | head -n 35
+*   Trying 10.1.243.191:9999...
+* Local port: 19999
+...Omitted...
+Welcome to echo-server!  Here's what I know.
+  > Head to /ws for interactive websocket echo!
+
+-> My hostname is: echo9999
+
+-> Requesting IP: 10.1.5.96:19999        # This time we see our expected local port as the src
+
+-> Request Headers | 
+
+  HTTP/1.1 GET /
+
+  Host: echo9999.istio-system.svc:9999
+  Accept: */*
+  User-Agent: curl/7.81.0
+
+# And of course that means there were no extra headers, since envoy was bypassed
+
+# But we still see the same port error if we try again before 60s TCP timewait is over.
+appuser@whereami:/app$ curl -vs --local-port 19999 echo9999.istio-system.svc:9999 | head -n 35
+*   Trying 10.1.243.191:9999...
+* bind failed with errno 98: Address in use
+* Closing connection 0

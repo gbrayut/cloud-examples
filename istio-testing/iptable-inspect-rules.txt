@@ -1,0 +1,73 @@
+# Enable firewall rule so IAP can connect via SSH
+gcloud compute firewall-rules create allow-ssh-ingress-from-iap \
+  --direction=INGRESS \
+  --action=allow \
+  --rules=tcp:22 \
+  --source-ranges=35.235.240.0/20 --network=gke-vpc
+
+# Find node where pod is running
+kubectl get pod -n testing -o wide
+
+# SSH into node (next steps assume COS but COS_CONTAINERD should be similar)
+gcloud compute ssh gke-gke-central-linux-gke-toolkit-poo-3c56a009-j99g
+# may need to include --project myproject --zone us-central1-b
+
+# Find container ID and PID for istio-proxy on desired pod
+sudo docker ps
+sudo docker inspect -f '{{ .State.Pid }}' 087bb66e6c0e
+3390339
+
+# Switch to container's cgroup/namespace
+sudo nsenter --uts --ipc --net --pid --target 3390339
+
+# Can now use commands to inspect network/iptables
+iptables -nt nat --list
+
+
+# Example output (See also https://jimmysong.io/en/blog/istio-sidecar-traffic-types/ )
+whereami-758fc65995-62spk /home/gregbray # iptables -nt nat --list
+Chain PREROUTING (policy ACCEPT)
+target     prot opt source               destination         
+ISTIO_INBOUND  tcp  --  0.0.0.0/0            0.0.0.0/0          # If you change IP Range values, you should see those here
+
+Chain INPUT (policy ACCEPT)
+target     prot opt source               destination         
+
+Chain OUTPUT (policy ACCEPT)
+target     prot opt source               destination         
+ISTIO_OUTPUT  tcp  --  0.0.0.0/0            0.0.0.0/0           # If you change IP Range values, you should see those here
+
+Chain POSTROUTING (policy ACCEPT)
+target     prot opt source               destination         
+
+Chain ISTIO_INBOUND (1 references)
+target     prot opt source               destination         
+RETURN     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:15008
+RETURN     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:1234      # This is from excludeInboundPorts
+RETURN     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:15020
+RETURN     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:15021
+RETURN     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:15090
+ISTIO_IN_REDIRECT  tcp  --  0.0.0.0/0            0.0.0.0/0           
+
+Chain ISTIO_IN_REDIRECT (3 references)
+target     prot opt source               destination         
+REDIRECT   tcp  --  0.0.0.0/0            0.0.0.0/0            redir ports 15006
+
+Chain ISTIO_OUTPUT (1 references)
+target     prot opt source               destination         
+RETURN     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:9900     # These two lines are from excludeOutboundPorts
+RETURN     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:9999
+RETURN     all  --  127.0.0.6            0.0.0.0/0           
+ISTIO_IN_REDIRECT  all  --  0.0.0.0/0           !127.0.0.1            owner UID match 1337
+RETURN     all  --  0.0.0.0/0            0.0.0.0/0            ! owner UID match 1337
+RETURN     all  --  0.0.0.0/0            0.0.0.0/0            owner UID match 1337
+ISTIO_IN_REDIRECT  all  --  0.0.0.0/0           !127.0.0.1            owner GID match 1337
+RETURN     all  --  0.0.0.0/0            0.0.0.0/0            ! owner GID match 1337
+RETURN     all  --  0.0.0.0/0            0.0.0.0/0            owner GID match 1337
+RETURN     all  --  0.0.0.0/0            127.0.0.1           
+ISTIO_REDIRECT  tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:9090     # This matches includeOutboundPorts across all IPs
+ISTIO_REDIRECT  all  --  0.0.0.0/0            0.0.0.0/0                             # This default jump will match all other outbound requests
+
+Chain ISTIO_REDIRECT (2 references)
+target     prot opt source               destination         
+REDIRECT   tcp  --  0.0.0.0/0            0.0.0.0/0            redir ports 15001

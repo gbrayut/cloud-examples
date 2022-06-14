@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whereami
+  namespace: testing
+  labels:
+    app: whereami
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: whereami
+  template:
+    metadata:
+      annotations:
+        traffic.sidecar.istio.io/includeInboundPorts: '*'
+        traffic.sidecar.istio.io/excludeInboundPorts: '1234'
+        traffic.sidecar.istio.io/includeOutboundPorts: '9090' # This doesn't override the implicit *, just the IPRange checks
+        traffic.sidecar.istio.io/excludeOutboundPorts: '9900,9999' # This does what you would expect (iptable rule for direct access)
+      labels:
+        app: whereami
+    spec:
+      containers:
+      - name: frontend
+        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.8
+        ports:
+        - containerPort: 8080
+---
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "whereami"
+  namespace: testing
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+    name: http # required value for Istio
+  selector:
+    app: "whereami"
+  type: "ClusterIP"
