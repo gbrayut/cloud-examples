@@ -5,19 +5,21 @@ networks:
     external: true
 
 services:
-  # create CA cert https://github.com/square/certstrap
+  # create CA crt and key https://github.com/square/certstrap
   certstrap_init:
     profiles: ["certstrap-init"]
     image: squareup/certstrap
     volumes:
       - shared-conf:/out
     command: init --common-name "CertAuth" --passphrase ""
+  # create server csr
   certstrap_server:
     profiles: ["certstrap-sign"]
     image: squareup/certstrap
     volumes:
       - shared-conf:/out
     command: request-cert --domain ghostserver --passphrase ""
+  # sign server csr to create crt and key
   certstrap_server_sign:
     depends_on: ["certstrap_server"]
     profiles: ["certstrap-sign"]
@@ -25,12 +27,14 @@ services:
     volumes:
       - shared-conf:/out
     command: sign ghostserver --CA CertAuth
+  # create client csr
   certstrap_client:
     profiles: ["certstrap-sign"]
     image: squareup/certstrap
     volumes:
       - shared-conf:/out
     command: request-cert --domain ghostclient --passphrase ""
+  # sign client csr to create crt and key
   certstrap_client_sign:
     depends_on: ["certstrap_client"]
     profiles: ["certstrap-sign"]
@@ -39,17 +43,15 @@ services:
       - shared-conf:/out
     command: sign ghostclient --CA CertAuth
   
-  
+  # target backend server. Test using curl -v localhost:17001/headers
   httpbin:
     profiles: ["services"]
     image: kennethreitz/httpbin
     networks:
       - test
-    #labels:
-    #  caddy: whoami.example.com
-    #  caddy.reverse_proxy: "{{upstreams 8000}}"
     ports:
       - "17001:80"
+  # ghostunnel server. Test using curl -v https://localhost:18001/headers (with client certs for mTLS)
   ghostserver:
     profiles: ["services"]
     image: ghostunnel/ghostunnel
@@ -60,9 +62,9 @@ services:
     working_dir: /var/run/shared-conf
     command: server --listen=0.0.0.0:8001 --target=httpbin:80 --cacert CertAuth.crt
       --cert ghostserver.crt --key ghostserver.key --allow-all --unsafe-target
-    # --use-workload-api
     ports:
       - "18001:8001"
+  # ghostunnel client. Test using: curl -v localhost:19001/headers
   ghostclient:
     profiles: ["services"]
     image: ghostunnel/ghostunnel
