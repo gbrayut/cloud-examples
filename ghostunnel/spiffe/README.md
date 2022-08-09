@@ -5,6 +5,11 @@ So I'm pretty sure this wont work... as GKE generates spiffe certs but doesn't i
 GKE mesh certificates https://cloud.google.com/blog/products/networking/traffic-director-integrates-with-ca-service
 https://cloud.google.com/traffic-director/docs/security-overview
 
+Identity reflection https://cloud.google.com/certificate-authority-service/docs/using-identity-reflection
+REFLECTED_SPIFFE https://cloud.google.com/certificate-authority-service/docs/tutorials/using-3pi-with-reflection#issue-certificate
+
+mount certs
+https://github.com/istio/istio/issues/25153#issuecomment-661971600
 
 ```bash
 # See whereami-deploy.yaml for client test pod that deploys into an namespace with sidecar istio-injection
