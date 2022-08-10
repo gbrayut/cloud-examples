@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-server
+  namespace: testfuse
+  labels:
+    app: nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx-gcsfuse
+        image: us-central1-docker.pkg.dev/gregbray-repo/test/nginx-gcsfuse
+        command: ["/usr/sbin/nginx"]
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+              - SYS_ADMIN
+        lifecycle:
+          postStart:
+            exec:
+              command: ["gcsfuse", "--uid", "33", "--gid", "33", "-o", "allow_other", "--log-file", "/tmp/gcsfuse.log", "gregbray-repo-gcs", "/var/www/html"]
+          preStop:
+            exec:
+              command: ["fusermount", "-u", "/var/www/html"]
+        #volumeMounts:
+        #- mountPath: /usr/share/nginx/html
+        #  name: mypvc
+      #volumes:
+      #- name: mypvc
+      #  persistentVolumeClaim:
+      #    claimName: test-pvc-fs
+---
+# from https://cloud.google.com/filestore/docs/use-multishares
+#kind: PersistentVolumeClaim
+#apiVersion: v1
+#metadata:
+#  name: test-pvc-fs
+#spec:
+#  accessModes:
+#    - ReadWriteMany
+#  storageClassName: csi-filestore-multishare
+#  resources:
+#    requests:
+#      storage: 100Gi

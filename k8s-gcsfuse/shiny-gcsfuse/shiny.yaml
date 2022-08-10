@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shiny-server
+  namespace: testfuse
+  labels:
+    app: shiny
+spec:
+  # shiny-server use in-memory state/sessions, so may have issues if replicas > 1
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shiny
+  template:
+    metadata:
+      labels:
+        app: shiny
+    spec:
+      containers:
+      - name: shiny-gcsfuse
+        image: us-central1-docker.pkg.dev/gregbray-repo/test/shiny-gcsfuse
+        # imagePullPolicy: Always # use to prevent caching, but containers will start slower
+        env:  # See also https://kubernetes.io/docs/tasks/inject-data-application/environment-variable-expose-pod-information/
+        - name: GCSFUSE_BUCKET
+          value: "gregbray-repo-gcs"
+        - name: GCSFUSE_OPTS
+          value: "--only-dir shiny-server-apps"
+        # Usually would bake this into the container entrypoin.sh script, but easier to test here using command/args
+        command: ["/bin/bash"]
+        args:
+        - -c
+        - 'chown shiny:shiny /var/log/shiny-server; exec sudo -u shiny /usr/bin/shiny-server'
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+              - SYS_ADMIN
+        lifecycle:
+          # Ideally this would be a sidecar/initContainer/CSI plugin, but lifecycle hooks should also work
+          postStart:
+            exec:
+              command: ["/bin/bash", "-c", "gcsfuse $GCSFUSE_OPTS --uid 999 --gid 999 -o allow_other --log-file /var/log/shiny-server/gcsfuse.log $GCSFUSE_BUCKET /srv/shiny-server/gcs"]
+          preStop:
+            exec:
+              command: ["fusermount", "-u", "/srv/shiny-server/gcs"]
+        ports:
+        - containerPort: 3838
+        volumeMounts:
+        - name: varlog
+          mountPath: /var/log/shiny-server/
+        - name: shiny-config-volume
+          mountPath: /etc/shiny-server
+      volumes:
+      - name: shiny-config-volume
+        configMap:
+          name: shiny-config
+      - name: varlog
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shiny-server
+  namespace: testfuse
+spec:
+  ports:
+  - port: 80
+    targetPort: 3838
+    name: http
+  selector:
+    app: shiny
+  type: ClusterIP
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: shiny-config
+  namespace: testfuse
+data:
+  shiny-server.conf: |-
+    # From shiny-config configmap
+    # Instruct Shiny Server to run applications as the user "shiny"
+    run_as shiny;
+
+    # Define a server that listens on port 3838
+    server {
+      listen 3838;
+
+      # Define a location at the base URL
+      location / {
+
+        # Host the directory of Shiny Apps stored in this directory
+        site_dir /srv/shiny-server;
+
+        # Log all Shiny output to files in this directory
+        log_dir /var/log/shiny-server;
+
+        # When a user visits the base URL rather than a particular application,
+        # an index of the applications available in this directory will be shown.
+        directory_index on;
+      }
+    }
