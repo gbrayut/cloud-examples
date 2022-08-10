@@ -1,0 +1,62 @@
+# See https://cloud.google.com/anthos/fleet-management/docs/use-workload-identity?hl=en#impersonate_a_service_account
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fleet-test-service-account
+  namespace: testing
+  annotations:
+    iam.gke.io/gcp-service-account: "gregbray-fleet.svc.id.goog"
+automountServiceAccountToken: false # set this to false when using projected volume for token
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  namespace: testing
+  name: my-cloudsdk-config
+data:
+  config: |
+    {
+      "type": "external_account",
+      "audience": "identitynamespace:gregbray-fleet.svc.id.goog:https://gkehub.googleapis.com/projects/gregbray-fleet/locations/global/memberships/gke-iowa",
+      "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+      "token_url": "https://sts.googleapis.com/v1/token",
+      "credential_source": {
+        "file": "/var/run/secrets/tokens/gcp-ksa/token"
+      }
+    }
+# add this to map to service account "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/test-sa@gregbray-vpc.iam.gserviceaccount.com:generateAccessToken",
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fleet-workload-identity-test
+  namespace: testing
+spec:
+  serviceAccountName: fleet-test-service-account
+  containers:
+  - image: google/cloud-sdk:slim
+    name: workload-identity-test
+    command: ["sleep","infinity"]
+    env:
+      - name: GOOGLE_APPLICATION_CREDENTIALS
+        value: /var/run/secrets/tokens/gcp-ksa/google-application-credentials.json
+    volumeMounts:
+    - name: gcp-ksa
+      mountPath: /var/run/secrets/tokens/gcp-ksa
+      readOnly: true
+  volumes:
+  - name: gcp-ksa
+    projected:
+      defaultMode: 420
+      sources:
+      - serviceAccountToken:
+          path: token
+          audience: gregbray-fleet.svc.id.goog
+          expirationSeconds: 172800
+      - configMap:
+          name: my-cloudsdk-config
+          optional: false
+          items:
+            - key: "config"
+              path: "google-application-credentials.json"

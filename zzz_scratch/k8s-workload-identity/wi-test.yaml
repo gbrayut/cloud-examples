@@ -1,0 +1,44 @@
+# See https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity#authenticating_to
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: testing-service-account
+  namespace: testing
+  annotations:
+    iam.gke.io/gcp-service-account: "test-sa@my-project.iam.gserviceaccount.com"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: workload-identity-test
+  namespace: testing
+spec:
+  containers:
+  - image: google/cloud-sdk:slim
+    name: workload-identity-test
+    command: ["sleep","infinity"]
+  serviceAccountName: testing-service-account
+  nodeSelector:
+    iam.gke.io/gke-metadata-server-enabled: "true"
+# Should see one response using
+# kubectl exec -it workload-identity-test --namespace testing -- curl -H "Metadata-Flavor: Google" http://169.254.169.254/computeMetadata/v1/instance/service-accounts/
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: workload-identity-disabled-test
+  namespace: testing
+spec:
+  containers:
+  - image: google/cloud-sdk:slim
+    name: workload-identity-test
+    command: ["sleep","infinity"]
+  serviceAccountName: testing-service-account
+  nodeSelector:
+    cloud.google.com/gke-nodepool: "secondary"
+  tolerations:
+  - key: "testing.local"
+    value: "tainted"
+    operator: "Equal" # or "Exists" to match any value
+    effect: "NoSchedule"

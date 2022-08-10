@@ -1,0 +1,22 @@
+# https://kubernetes.io/docs/tasks/administer-cluster/sysctl-cluster/#setting-sysctls-for-a-pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sysctl-test
+  namespace: testing
+spec:
+  securityContext:
+    sysctls:
+    #- name: net.core.rmem_default
+    #  value: "2000000000"
+    #- name: net.core.rmem_max
+    #  value: "2000000000"
+    #- name: net.core.wmem_default
+    #  value: "2000000000"
+    #- name: net.core.wmem_max
+    #  value: "2000000000"
+  containers:
+  - image: google/cloud-sdk
+    name: sysctl-test
+    command: ["sleep","infinity"]
+#   Warning  SysctlForbidden  13s   kubelet            forbidden sysctl: "net.core.rmem_default" not whitelisted
