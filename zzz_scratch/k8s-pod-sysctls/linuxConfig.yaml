@@ -1,0 +1,6 @@
+kubeletConfig: {}
+linuxConfig:
+ sysctl:
+    net.core.rmem_max: '8388608'    # netns max buffer per socket, must be less than 2147483647
+    #net.core.rmem_default: '8388608'   
+    # ERROR: (gcloud.container.node-pools.update) ResponseError: code=400, message=Unsupported kernel parameter net.core.rmem_default. 
