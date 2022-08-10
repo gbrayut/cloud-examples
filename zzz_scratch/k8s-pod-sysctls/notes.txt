@@ -1,0 +1,41 @@
+https://github.com/influxdata/telegraf/blob/master/plugins/inputs/socket_listener/README.md#a-note-on-udp-os-buffer-sizes
+
+from case 29661976
+
+1. How come these values are set so low by default?
+
+- After doing an investigation about the product, some restrictions are defined. net.core.rmem_max value needs to be any positive integer, less than 2147483647 
+This will define the maximum receive socket buffer size in bytes.
+
+- Unless network throughput is really high or TCP/UDP packages are larger and need a bigger buffer the default setting should suffice.
+
+
+2. What are some side effects or potential problems that will come by increasing these values?
+
+--- Modifying "mem" values will reserve this space in memory in the node, however this memory is not accounted for by the kubelet so if your nodes get high memory usage you may get OOM warnings / errors on your nodes causing unwanted behaviour.
+
+-- For instance, linux distributions will use 128kb, enough for most use cases, but if you have too many UDP packages hitting your device this buffer may get filled (UDP is sometimes used for moving large amounts of data faster) now 128kb is not enough so you change it to 1GB. 
+
+- If you have a Node with 16GB of RAM, this means that 1GB is used exclusively for the buffer, now in most cases you will have at least 1GB of free space on your node but if at some point you request more than 15GB or use more than 15GB on your workloads you will start getting OOM as kubelet is only aware of the requested/used resources of your workloads.
+
+
+For your question: 
+3. Is there an easy way to adjust these values on nodepool per nodepool basis (we could potentially put telegraf on a separate nodepool that would receive these new values)?
+A: Yes, you can take a look into this doc [1]. It shows how to customize your Google Kubernetes Engine (GKE) node configuration using a configuration file called a node system configuration. 
+Basically you need to create a yaml config file like this one [2] and either use it to Create a new cluster, Create a new Nodepool or Update an existing Nodepool with your desired tuned parameters (sysctl and kubelet). However, there is a caveat,  only a few parameters are allowed to be tuned, here the list [3] and I can only see it is allowed to tune `net.core.rmem_max` and not `net.core.rmem_default`. If you try to change `net.core.rmem_default` using a node system configuration you will get next message:
+ResponseError: code=400, message=Unsupported kernel parameter net.core.rmem_default.
+ 
+So, in your case, you can only tune `net.core.rmem_max` using node system configuration file [1] , actually you can use file [2]  (just adjust the value to the desired by you).
+ 
+Regarding the `net.core.rmem_default`. You can still tune it, but you will need to do it using a daemonset to change this parameter and use Taints and Tolerations if you want to use specific Nodepools with these two sysctl configurations. 
+ 
+ 
+For your question:
+Can you clarify if the socket buffer size is a socket by socket or a global setting?
+Yes, your understanding is correct, it is the size of the incoming kernel socket buffer per one socket.
+ 
+
+
+
+I suspect we don't allow easily changing rmem_default since that can greatly increase the memory usage across all pods and very few workloads need larger buffers. Changing rmem_max doesn't have any immediate impact (workloads still get default value until they increase it for their network namespace/process) but it does open the cluster to specific kinds of denial of service attacks (malicious clients/servers exhausting shared network/memory resources).
+Sending metrics/telemetry as extremely large UDP payloads is definitely not a best practice (those are often better served by TCP transports). But in a controlled environment increasing from 212992 (208kb) to something like 8388608 (8mb) will give higher throughput and is relatively safe. But that value will alter the memory usage of the telegraf pods so you will need to do some testing to find the right values. And if you only need it for a few workloads you can also isolate those to their own dedicated node pool. (edited) 
