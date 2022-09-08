@@ -94,3 +94,9 @@ volumes:
 #docker-compose --profile certstrap-init up
 #docker-compose --profile certstrap-sign up
 #docker-compose --profile services up
+
+# Manually generate more certs:
+#docker run --rm -v ghostunnel_shared-conf:/out squareup/certstrap -- request-cert --domain whoami-1 --passphrase ""
+#docker run --rm -v ghostunnel_shared-conf:/out squareup/certstrap -- sign whoami-1 --CA CertAuth
+#docker run --rm -v ghostunnel_shared-conf:/out squareup/certstrap -- request-cert --domain '*.example.com' --passphrase ""
+#docker run --rm -v ghostunnel_shared-conf:/out squareup/certstrap -- sign '*.example.com' --CA CertAuth
