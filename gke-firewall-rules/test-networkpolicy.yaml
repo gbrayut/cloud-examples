@@ -1,0 +1,91 @@
+---
+# From https://github.com/GoogleCloudPlatform/anthos-security-blueprints/tree/master/restricting-traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all-but-dns
+  namespace: app-2  # policy is being applied to this namespace
+spec:
+  policyTypes:
+  - Ingress
+  - Egress
+  podSelector: {} # policy applied to all pods in this namespace
+  ingress: []     # empty ingress allow list. This line is optional as in this case having Ingress in policyTypes implies enforcing ingress allow list (defaults to empty) 
+  egress:         # define egress allow list. Note in GKE dataplane v2 rules are stateful (ingress allows external client initiated flows to pod, egress allows pod initiated flows to external servers)
+    - to:
+      # Allow kube-dns and node-local-dns (required for DNS to work inside the pods)
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: kube-system
+        podSelector:
+          matchExpressions:
+          - key: k8s-app
+            operator: In
+            values: ["kube-dns","node-local-dns"]
+      ports:
+      - protocol: TCP
+        port: 53
+      - protocol: UDP
+        port: 53
+---
+# Multiple NetworkPolicy resources are cumulative (aggregate which ingress/egress are allowed)
+# From https://cloud.google.com/kubernetes-engine/docs/how-to/network-policy#limitations_and_requirements
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-workload-identity
+  namespace: app-2  # policy is being applied to this namespace
+spec:
+  policyTypes:
+  - Egress
+  podSelector: {} # policy applied to all pods in this namespace
+  egress:
+    - to:
+      # Allow GKE Metadata Server access (required for workload identity)
+      - ipBlock:
+          cidr: 169.254.169.254/32
+      # Docs say it previously also use these but in my testing http://metadata.google.internal resovled to the above IP
+      #- ipBlock:
+      #    cidr: 169.254.169.252/32
+      #- ipBlock:
+      #    cidr: 127.0.0.1/32
+      ports:
+      - protocol: TCP
+        port: 80
+      #- protocol: TCP
+      #  port: 988
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-pods-in-this-namespace
+  namespace: app-2
+spec:
+  policyTypes:
+  - Ingress
+  - Egress
+  podSelector: {} # apply to all pods in this namespace
+  ingress:
+    - from:
+      - podSelector: {} # allow ingress from all pods in same namespace
+  egress:
+    - to:
+      - podSelector: {} # allow egress to all pods in same namespace
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-1-namespace
+  namespace: app-2
+spec:
+  policyTypes:
+  - Ingress
+  podSelector: # apply only to pods labeled run=test-2 in this namespace
+    matchLabels:
+      run: test-2
+  ingress:
+    - from:
+      # allow ingress from another namespace
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: app-1
