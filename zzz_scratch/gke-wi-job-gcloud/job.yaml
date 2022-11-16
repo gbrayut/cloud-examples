@@ -1,0 +1,21 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: wi-job-gcloud
+spec:
+  template:
+    spec:
+      containers:
+      - name: gcloud
+        image: gcr.io/google.com/cloudsdktool/google-cloud-cli:latest
+        command: ["/scripts/entrypoint.sh"]
+        volumeMounts:
+        - name: entrypoint
+          mountPath: /scripts
+      restartPolicy: Never
+      volumes:
+      - name: entrypoint
+        configMap:
+          name: wi-job-entrypoint
+          defaultMode: 0744
+  backoffLimit: 1
