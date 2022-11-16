@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wi-job-entrypoint
+data:
+  entrypoint.sh: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Starting Workload Identity based gcloud job"
+    gcloud auth list
+    kubectl get nodes
+    echo "Finished Workload Identity based gcloud job"
