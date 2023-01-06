@@ -1,0 +1,111 @@
+# gRPC testing using https://grpcb.in/
+# also uses whereami from https://github.com/theemadnes/gke-whereami/tree/master/k8s-grpc
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: grpcbin
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grpcbin
+  namespace: grpcbin
+  labels:
+    app: grpcbin
+spec:
+  selector:
+    matchLabels:
+      app: grpcbin
+  template:
+    metadata:
+      labels:
+        app: grpcbin
+    spec:
+      containers:
+      - name: grpc
+        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.9
+        ports:
+          - name: grpc
+            containerPort: 9090 # This server includes grpc.health.v1.Health service but only supports plaintext (no end-to-end TLS)
+          - name: http
+            containerPort: 8080 # prom metrics, which can also be used as an HTTP based healthcheck
+        readinessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-addr=:9090"]
+          initialDelaySeconds: 5
+        livenessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-addr=:9090"]
+          initialDelaySeconds: 10
+        env:
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: POD_SERVICE_ACCOUNT
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.serviceAccountName
+          - name: BACKEND_ENABLED
+            value: "False"
+          - name: METADATA
+            value: "grpc-frontend"
+          - name: GRPC_ENABLED
+            value: "True"
+          - name: TRACE_SAMPLING_RATIO
+            value: "0.00"
+      # Another gRPC test server that supports both plaintext and TLS, but does not include grpc.health.v1.Health service
+      - image: moul/grpcbin:latest
+        imagePullPolicy: IfNotPresent
+        name: grpcbin
+        ports:
+        - containerPort: 9000 # Plaintext
+          protocol: TCP
+        - containerPort: 9001 # TLS
+          protocol: TCP
+
+
+
+---
+# This creates a simple L4 TCP Network Load Balancer https://cloud.google.com/load-balancing/docs/network
+# See below for more options (also https://cloud.google.com/kubernetes-engine/docs/tutorials/exposing-grpc-services-on-gke-using-envoy-proxy#alternative_ways_to_route_grpc_traffic)
+apiVersion: v1
+kind: Service
+metadata:
+  name: grpcbin
+  namespace: grpcbin
+spec:
+  ports:
+  # for testing with whereami
+  - port: 9090
+    protocol: TCP
+    name: grpc # add names for protocol detection when using Istio
+  - port: 8080
+    protocol: TCP
+    name: http-metrics
+  # for testing with grpcbin
+  - port: 9000
+    protocol: TCP
+    name: grpc-non-tls
+  - port: 9001
+    protocol: TCP
+    name: grpc-tls
+    appProtocol: HTTP2  # Required by gateway api for HTTP2 from GCLB to backend https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#load-balancer-tls
+  selector:
+    app: grpcbin
+  type: LoadBalancer    # This creates an L4 Network LB
+
+# Testing: see https://cloud.google.com/kubernetes-engine/docs/tutorials/exposing-grpc-services-on-gke-using-envoy-proxy#test_the_grpc_services
+# ENDPOINT=$(kubectl get svc grpcbin -n grpcbin | grep -v EXTERNAL-IP | awk '{ print $4}')
+# grpcurl -plaintext $ENDPOINT:9090 whereami.Whereami.GetPayload
+# grpcurl -vv -plaintext $ENDPOINT:9000 list hello.HelloService
+# grpcurl -vv -insecure  $ENDPOINT:9001 hello.HelloService.SayHello
+# grpcurl describe command is also useful

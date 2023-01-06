@@ -1,0 +1,90 @@
+# Another option using gke-l7-gxlb Gateway API for classic GCLB https://cloud.google.com/blog/products/containers-kubernetes/google-kubernetes-engine-gateway-controller-is-now-ga
+# See also https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways
+# and https://cloud.google.com/kubernetes-engine/docs/how-to/gatewayclass-capabilities
+kind: Gateway
+apiVersion: gateway.networking.k8s.io/v1beta1
+metadata:
+  name: grpcbin-lb
+  namespace: grpcbin
+  annotations:
+    # Assign certs via Certificate Manager https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-certificate-manager
+    networking.gke.io/certmap: gke-gateway-map
+spec:
+  gatewayClassName: gke-l7-gxlb
+  listeners:
+  - name: https
+    protocol: HTTPS
+    port: 443
+    
+    # Or instead of using a certmap, assign ssl certs similar to classic GCLBs https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-ssl-certificate
+    #tls:
+    #  mode: Terminate    # Must terminate, Passthrough only supported on a few GCLB classes
+    #  options: 
+    #    networking.gke.io/pre-shared-certs: "test-ingress"
+  #addresses:
+  #- type: NamedAddress
+  #  value: grpc-static-ip
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: grpcbin-route
+  namespace: grpcbin
+spec:
+  parentRefs:
+  - name: grpcbin-lb
+  hostnames:
+  - grpc.example.com
+  rules:    # More examples at https://gateway-api.sigs.k8s.io/api-types/httproute/#backendrefs-optional
+
+  # send /metrics requests to the http backend from prometheus metrics exporter (for testing via curl)
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /metrics
+    backendRefs:
+    - name: grpcbin
+      port: 8080
+
+  # send everything else to the TLS enabled grpcbin backend
+  - matches:
+    - path:
+        value: /
+    backendRefs:
+    - name: grpcbin
+      port: 9001
+---
+# configure healthcheck https://cloud.google.com/kubernetes-engine/docs/how-to/configure-gateway-resources#configure_health_check
+# Gateway API does support gRPC checks for some LBs, or you can use HTTP/TCP/etc
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: grpcbin-lb-healthcheck
+  namespace: grpcbin
+spec:
+  default:
+    checkIntervalSec: 15
+    timeoutSec: 15
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    logConfig:
+      enabled: false
+    config:   # https://cloud.google.com/load-balancing/docs/features#health-checks for which checks are supported
+      type: GRPC # or HTTP, TCP, HTTP, HTTPS, HTTP2
+      # see also: kubectl explain HealthCheckPolicy.spec.default.config
+      httpHealthCheck:    # Inactive (only the selected type is used)
+        port: 8080
+        requestPath: /metric/healthz          # not a real path but should work in this case
+      grpcHealthCheck:    # See https://cloud.google.com/load-balancing/docs/health-checks#optional-flags-hc-protocol-grpc
+        grpcServiceName: "whereami.Whereami"  # Omit to just run grpc.health.v1.Health server check, otherwise specifies which service status to explicity check
+        port: 9090
+  targetRef:
+    group: ""
+    kind: Service
+    name: grpcbin
+# must also add appProtocol to the service so it uses HTTP2 for gRPC port instead of defaulting to HTTP 1.1
+# otherwise grpcurl error: unexpected HTTP status code received from server: 400 (Bad Request); malformed header: missing HTTP content-type
+
+# testing: (Must use -authority that matches CN/SAN entry on cert for certmap/SNI matching)
+# grpcurl -vv -insecure -authority grpc.example.com 34.120.53.24:443 hello.HelloService.SayHello
+# curl -v --cacert /tmp/cert/_.example.com.crt --resolve grpc.example.com:443:34.120.53.24 https://grpc.example.com/metrics

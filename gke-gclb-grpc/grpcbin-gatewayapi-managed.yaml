@@ -1,0 +1,60 @@
+# Another Gateway API option using gke-l7-global-external-managed Envoy based proxy
+# see https://cloud.google.com/kubernetes-engine/docs/how-to/gatewayclass-capabilities
+kind: Gateway
+apiVersion: gateway.networking.k8s.io/v1beta1
+metadata:
+  name: grpcbin-lb-managed
+  namespace: grpcbin
+  annotations:
+    # Assign certs via Certificate Manager https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-certificate-manager
+    networking.gke.io/certmap: gke-gateway-map
+spec:
+  gatewayClassName: gke-l7-global-external-managed  # Based on Envoy, and currently still in Public Preview
+  listeners:
+  - name: https
+    protocol: HTTPS
+    port: 443
+    
+    # Or instead of using a certmap, assign ssl certs similar to classic GCLBs https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-ssl-certificate
+    #tls:
+    #  mode: Terminate    # Must terminate, Passthrough only supported on a few GCLB classes
+    #  options: 
+    #    networking.gke.io/pre-shared-certs: "test-ingress"
+  #addresses:
+  #- type: NamedAddress
+  #  value: grpc-static-ip
+---
+# Still have to use HTTPRoute, but in the future may have access to GRPCRoute https://gateway-api.sigs.k8s.io/guides/grpc-routing/
+# To see available CRDs use: kubectl api-resources --api-group gateway.networking.k8s.io
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: grpcbin-route-managed
+  namespace: grpcbin
+spec:
+  parentRefs:
+  - name: grpcbin-lb-managed
+  hostnames:
+  - grpc-2.example.com
+  rules:    # More examples at https://gateway-api.sigs.k8s.io/api-types/httproute/#backendrefs-optional
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /metrics
+    backendRefs:
+    - name: grpcbin
+      port: 8080
+  - matches:
+    - path:
+        value: /
+    backendRefs:
+    - name: grpcbin
+      port: 9001
+---
+# HealthCheckPolicy omitted as it uses the same one as classic since they are attached to the Service resource
+
+
+
+# testing: (Must use -authority that matches CN/SAN entry on cert for certmap/SNI matching)
+# grpcurl -vv -insecure -authority grpc-2.example.com 34.160.85.213:443 hello.HelloService.SayHello
+# curl -v --cacert /tmp/cert/_.example.com.crt --resolve grpc-2.example.com:443:34.160.85.213 https://grpc-2.example.com/metrics

@@ -1,0 +1,67 @@
+# Using GKE Ingress Controller to create L7 Classic HTTPS External LB https://cloud.google.com/kubernetes-engine/docs/how-to/ingress-http2
+# See requirements at https://cloud.google.com/load-balancing/docs/https#using_grpc_with_your_applications
+apiVersion: v1
+kind: Service
+metadata:
+  name: grpcbin-ingress
+  namespace: grpcbin
+  annotations:
+    cloud.google.com/app-protocols: '{"grpc":"HTTP2","grpc-non-tls":"HTTP2","grpc-tls":"HTTP2"}'  # Must set all gRPC port names to HTTP2 for end-to-end TLS via ALPN
+    cloud.google.com/neg: '{"ingress": true}' # use this for Container Native Load Balancing, otherwise need a NodePort instead of ClusterIP
+    cloud.google.com/backend-config: '{"default": "grpcbin-backendconfig"}' # https://cloud.google.com/kubernetes-engine/docs/how-to/ingress-configuration#associating_backendconfig_with_your_ingress
+spec:
+  ports:
+  # for testing with whereami
+  - port: 9090
+    protocol: TCP
+    name: grpc # add names for protocol detection when using Istio
+  - port: 8080
+    protocol: TCP
+    name: http-metrics
+  # for testing with grpcbin
+  - port: 9000
+    protocol: TCP
+    name: grpc-non-tls
+  - port: 9001
+    protocol: TCP
+    name: grpc-tls
+  selector:
+    app: grpcbin
+  type: ClusterIP # for Container Native Load Balancing, otherwise need a NodePort
+---
+# Need to customize health check, since ingress controller doesn't support gRPC based health checks on backends
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: grpcbin-backendconfig
+  namespace: grpcbin
+spec:
+  # gRPC healthchecks not supported, use http endpoint instead https://cloud.google.com/kubernetes-engine/docs/how-to/ingress-configuration#direct_health
+  healthCheck:
+    checkIntervalSec: 15
+    timeoutSec: 15
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    type: HTTP                      # GKE Ingress controller only supports HTTP, HTTPS, or HTTP2
+    requestPath: /metrics/healthz   # Not a real endpoint, but should work (via prometheus metrics exporter)
+    port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grpcbin-ingress
+  namespace: grpcbin
+  annotations:  # See https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balance-ingress#ingress_annotations
+    #kubernetes.io/ingress.global-static-ip-name: "grpc-static-ip"   # Technically optional but helps prevent new ephemeral IPs being used when things change
+    kubernetes.io/ingress.allow-http: "false"                   # Optional, but gRPC must use TLS end-to-end, frontend and backend (I think it uses ALPN to upgrade connections from HTTP/1.1 to HTTP/2)
+    ingress.gcp.kubernetes.io/pre-shared-cert: "test-ingress"   # see https://cloud.google.com/kubernetes-engine/docs/how-to/ingress-multi-ssl#pre-shared-certs 
+spec:
+  defaultBackend:
+    service:
+      name: grpcbin-ingress
+      port:          # must use TLS to backend for HTTP/2 per https://cloud.google.com/load-balancing/docs/ssl-certificates/encryption-to-the-backends#secure-protocol-considerations
+        number: 9001 # othwerise get error: unexpected HTTP status code received from server: 502 (Bad Gateway); transport: received unexpected content-type "text/html; charset=UTF-8" or just EOF errors (when ingress.allow-http is enabled)
+
+# Testing: (I think authority is optional, unless you have multiple certs on GCLB and need SNI)
+# Also note that GCLB created via ingress controller only binds to port 443
+# grpcurl -vv -insecure -authority test.example.com 34.120.53.24:443 hello.HelloService.SayHello
