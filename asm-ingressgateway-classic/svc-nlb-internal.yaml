@@ -1,0 +1,29 @@
+# Based on https://github.com/GoogleCloudPlatform/anthos-service-mesh-packages/blob/main/samples/gateways/istio-ingressgateway/service.yaml
+# Customized service to use internal instead of external TCP LB
+apiVersion: v1
+kind: Service
+metadata:
+  name: istio-ingressgateway
+  namespace: istio-ingress
+  labels:
+    app: istio-ingressgateway
+    istio: ingressgateway
+  annotations:
+    # https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#create
+    networking.gke.io/load-balancer-type: "Internal"
+spec:
+  ports:
+  # status-port exposes a /healthz/ready endpoint that can be used with GKE Ingress health checks
+  - name: status-port
+    port: 15021
+    protocol: TCP
+    targetPort: 15021
+  # Any ports exposed in Gateway resources should be exposed here.
+  - name: http2
+    port: 80
+  - name: https
+    port: 443
+  selector:
+    istio: ingressgateway
+    app: istio-ingressgateway
+  type: LoadBalancer

@@ -1,0 +1,113 @@
+# Copied from https://github.com/GoogleCloudPlatform/anthos-service-mesh-packages/blob/main/samples/gateways/istio-ingressgateway/
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    istio.io/rev: asm-managed
+  name: istio-ingress
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: istio-ingressgateway
+  namespace: istio-ingress
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: istio-ingressgateway
+  namespace: istio-ingress
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: istio-ingressgateway
+  namespace: istio-ingress
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: istio-ingressgateway
+subjects:
+- kind: ServiceAccount
+  name: istio-ingressgateway
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: istio-ingressgateway
+  namespace: istio-ingress
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      istio: ingressgateway
+      app: istio-ingressgateway
+---
+# Optional: HorizontalPodAutoscaler will automatically scale the gateway replica count based on
+# CPU utilization
+# Used on >=1.23 K8S versions
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: istio-ingressgateway
+  namespace: istio-ingress
+spec:
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+  minReplicas: 3
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: istio-ingressgateway
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: istio-ingressgateway
+  namespace: istio-ingress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: istio-ingressgateway
+      istio: ingressgateway
+  template:
+    metadata:
+      annotations:
+        # This is required to tell Anthos Service Mesh to inject the gateway with the
+        # required configuration.
+        inject.istio.io/templates: gateway
+      labels:
+        app: istio-ingressgateway
+        istio: ingressgateway
+    spec:
+      containers:
+      - name: istio-proxy
+        image: auto # The image will automatically update each time the pod starts.
+        resources:
+          limits:
+            cpu: 2000m
+            memory: 1024Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+      serviceAccountName: istio-ingressgateway
+      # Optional nodeSelector and toleration when using specific node pool for ingress gateways
+      # see https://cloud.google.com/kubernetes-engine/docs/how-to/node-taints
+      #nodeSelector:
+      #  cloud.google.com/gke-nodepool: ingress-pool
+      #tolerations:
+      #- effect: NoSchedule
+      #  key: dedicated
+      #  value: istioingress
+      #  operator: Equal

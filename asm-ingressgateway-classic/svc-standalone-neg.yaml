@@ -1,0 +1,28 @@
+# Based on 
+apiVersion: v1
+kind: Service
+metadata:
+  name: istio-ingressgateway-neg
+  namespace: istio-ingress
+  labels:
+    app: istio-ingressgateway
+    istio: ingressgateway
+  annotations:
+    # https://cloud.google.com/kubernetes-engine/docs/how-to/standalone-neg#create_a_service
+    cloud.google.com/neg: '{"exposed_ports": {"443":{"name": "asm-ingress-https"}}}'
+spec:
+  ports:
+  # status-port exposes a /healthz/ready endpoint that can be used with GKE Ingress health checks
+  - name: status-port
+    port: 15021
+    protocol: TCP
+    targetPort: 15021
+  # Any ports exposed in Gateway resources should be exposed here.
+  - name: http2
+    port: 80
+  - name: https
+    port: 443
+  selector:
+    istio: ingressgateway
+    app: istio-ingressgateway
+  type: ClusterIP
