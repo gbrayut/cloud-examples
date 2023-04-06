@@ -1,0 +1,34 @@
+gcloud container --project=$DEVSHELL_PROJECT_ID node-pools create "ingress-pool" --cluster "gke-iowa-v1" --region "us-central1" \
+  --machine-type "e2-standard-2" --image-type "UBUNTU_CONTAINERD" --disk-type "pd-standard" --disk-size "100" \
+  --num-nodes "1" --enable-autoscaling --min-nodes=0 --max-nodes=3 --enable-autoupgrade --enable-autorepair --max-surge-upgrade 3 \
+  --max-unavailable-upgrade 0 --max-pods-per-node "110" --node-locations "us-central1-a,us-central1-f" \
+  --node-taints=example.com/dedicated=ingress:NoSchedule
+
+
+ddosify -t http://10.31.236.55 -d 600 -n 1000 -T 1
+
+
+not sure if this works?
+k rollout restart -n echoserver deploy/echoserver
+
+
+
+
+https://cloud.google.com/kubernetes-engine/docs/concepts/ingress#controller_summary
+
+
+https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing
+alpha.cloud.google.com/load-balancer-backend-share.
+
+https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#create
+                
+kubernetes.io/ingress.class: "gce-internal"                
+                
+
+https://cloud.google.com/load-balancing/docs/internal/setting-up-internal#ilb-global-access
+              cloud.google.com/load-balancer-type: "Internal"
+
+    networking.gke.io/internal-load-balancer-allow-global-access: "true"
+    
+networking.gke.io/load-balancer-type: "Internal"
+alpha.cloud.google.com/load-balancer-backend-share
