@@ -1,0 +1,68 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    istio.io/rev: default
+  name: app-2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whereami
+  namespace: app-2
+  labels:
+    app: whereami
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: whereami
+  template:
+    metadata:
+      labels:
+        app: whereami
+    spec:
+      containers:
+      - name: frontend
+        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.9
+        ports:
+        - containerPort: 8080
+        env:
+        - name: ECHO_HEADERS
+          value: "True"
+---
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "whereami"
+  namespace: app-2
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+    appProtocol: http
+    name: http
+  selector:
+    app: "whereami"
+  type: "ClusterIP"
+---
+# https://cloud.google.com/service-mesh/docs/security/configuring-mtls
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: app-2
+  namespace: app-2
+spec:
+  selector:
+    matchLabels:
+      app: whereami
+  mtls:
+    # mode: STRICT  # All container ports
+    mode: UNSET
+  portLevelMtls:
+    # Require mTLS for specific container ports
+    8080:
+      mode: STRICT
+    # Disable mTLS for any container ports that are bypassing envoy sidecar
+    #8081:
+    #  mode: DISABLE
