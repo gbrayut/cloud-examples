@@ -1,0 +1,112 @@
+# https://istio.io/latest/docs/concepts/traffic-management/
+# https://istio.io/latest/docs/reference/config/networking/gateway/
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: shared-istio-gw
+  namespace: istio-ingress
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: http
+    hosts:
+    - "*.example.com"
+  
+  # https://istio.io/latest/docs/tasks/traffic-management/ingress/secure-ingress/#configure-a-tls-ingress-gateway-for-multiple-hosts
+  #- port:
+  #    number: 443
+  #    name: https
+  #    protocol: https
+  #  tls:
+  #    mode: SIMPLE
+  #    credentialName: shared-istio-gw-wildcard-cert
+  #    # kubectl create -n istio-ingress secret tls shared-istio-gw-wildcard-cert --key=star.pem --cert=star.crt
+  #  hosts:
+  #  - "*.example.com"
+---
+# https://istio.io/latest/docs/reference/config/networking/virtual-service/
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: anywhere-vs
+  namespace: istio-ingress
+spec:
+  hosts:
+  - "anywhere.example.com"
+  gateways:
+  - shared-istio-gw
+  http:
+  # Use match to forward specific path prefixes
+  - match:
+    - uri:
+        prefix: /app-1
+    route:
+    - destination:
+        host: whereami.app-1.svc.cluster.local
+  - match:
+    - uri:
+        prefix: /app-2
+    route:
+    - destination:
+        host: whereami.app-2.svc.cluster.local
+  # For all other paths, forward to both apps
+  - route:
+    - destination:
+        host: whereami.app-1.svc.cluster.local
+      weight: 50
+    - destination:
+        host: whereami.app-2.svc.cluster.local
+      weight: 50
+    # https://istio.io/latest/docs/concepts/traffic-management/
+    #fault:
+    #  #abort:
+    #  #  httpStatus: 500
+    #  #  percentage:
+    #  #    value: 50
+    #  delay:
+    #    fixedDelay: 2s
+    #    percent: 50
+    # Default retry is 2, increase to 3 and lower timeout
+    timeout: 1s
+    retries:
+      attempts: 3
+      perTryTimeout: 100ms
+---
+# https://istio.io/latest/docs/ops/best-practices/traffic-management/
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: app-1-vs
+  namespace: app-1  # Apps can manage their own hosts in their namespace if desired
+spec:
+  hosts:
+  - "app-1.example.com"
+  gateways:
+  - istio-ingress/shared-istio-gw
+  http:
+  - route:
+    - destination:
+        host: whereami.app-1.svc.cluster.local
+        port:
+          number: 80
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: app-2-vs
+  namespace: app-2
+spec:
+  hosts:
+  - "app-2.example.com"
+  gateways:
+  - istio-ingress/shared-istio-gw
+  http:
+  - route:
+    - destination:
+        host: whereami.app-2.svc.cluster.local
+        port:
+          number: 80

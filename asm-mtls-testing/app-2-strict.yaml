@@ -23,11 +23,24 @@ spec:
         app: whereami
     spec:
       containers:
-      - name: frontend
-        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.9
+      # https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/whereami
+      - name: whereami
+        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.19
         ports:
         - containerPort: 8080
         env:
+        - name: NODE_NAME #The node name the pod is running on
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_NAMESPACE #The kubernetes Namespace where the Pod is running
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP #The IP address of the pod
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
         - name: ECHO_HEADERS
           value: "True"
 ---
@@ -37,6 +50,7 @@ metadata:
   name: "whereami"
   namespace: app-2
 spec:
+  # See https://istio.io/latest/docs/ops/configuration/traffic-management/protocol-selection/
   ports:
   - port: 80
     targetPort: 8080
@@ -53,12 +67,13 @@ metadata:
   name: app-2
   namespace: app-2
 spec:
+  # Use selector to apply to specific workloads
   selector:
     matchLabels:
       app: whereami
   mtls:
-    # mode: STRICT  # All container ports
-    mode: UNSET
+    # https://istio.io/latest/docs/reference/config/security/peer_authentication/#PeerAuthentication-MutualTLS-Mode
+    mode: UNSET   # Inherits value from namespace or uses PERMISSIVE by default
   portLevelMtls:
     # Require mTLS for specific container ports
     8080:

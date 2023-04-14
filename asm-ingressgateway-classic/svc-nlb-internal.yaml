@@ -1,5 +1,6 @@
 # Based on https://github.com/GoogleCloudPlatform/anthos-service-mesh-packages/blob/main/samples/gateways/istio-ingressgateway/service.yaml
 # Customized service to use internal instead of external TCP LB
+# Find in console at https://console.cloud.google.com/net-services/loadbalancing/list/loadBalancers
 apiVersion: v1
 kind: Service
 metadata:
@@ -19,9 +20,12 @@ spec:
     protocol: TCP
     targetPort: 15021
   # Any ports exposed in Gateway resources should be exposed here.
-  - name: http2
+  # See also https://istio.io/latest/docs/ops/configuration/traffic-management/protocol-selection/
+  - name: http
+    appProtocol: http
     port: 80
   - name: https
+    appProtocol: https
     port: 443
   selector:
     istio: ingressgateway

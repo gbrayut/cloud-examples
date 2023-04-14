@@ -4,7 +4,7 @@ ASM has a few [deployment options](https://cloud.google.com/service-mesh/docs/ov
 
 * [in-cluster](https://cloud.google.com/service-mesh/docs/supported-features) via asmcli for GKE Standard and Anthos Multi/Hybrid Cloud deployments
 * [managed](https://cloud.google.com/service-mesh/docs/managed/supported-features-mcp) via Fleet API for GKE Standard or Autopilot
-* [managed via asmcli](https://cloud.google.com/service-mesh/docs/managed/provision-managed-anthos-service-mesh-asmcli) is also supported, but using Fleet API is recommended for GKE
+* [managed via asmcli](https://cloud.google.com/service-mesh/docs/managed/provision-managed-anthos-service-mesh-asmcli) is also supported, but using Fleet API is recommended unless you need to use VPC-SC, or Private CA. You can also use asmcli to choose an ASM release channel that is different from your GKE channel.
 
 Google also recommends using Managed Control Plane (MCP) and Data Plane (MDP) when possible since Google will handle the reliability, upgrades, scaling, and security of the service mesh for you.
 

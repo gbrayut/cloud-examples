@@ -1,4 +1,5 @@
-# Based on 
+# Based on https://cloud.google.com/kubernetes-engine/docs/how-to/standalone-neg
+# Find in console at https://console.cloud.google.com/compute/networkendpointgroups/list
 apiVersion: v1
 kind: Service
 metadata:
@@ -9,7 +10,7 @@ metadata:
     istio: ingressgateway
   annotations:
     # https://cloud.google.com/kubernetes-engine/docs/how-to/standalone-neg#create_a_service
-    cloud.google.com/neg: '{"exposed_ports": {"443":{"name": "asm-ingress-https"}}}'
+    cloud.google.com/neg: '{"exposed_ports": {"80":{"name": "asm-ingress-http"},"443":{"name": "asm-ingress-https"}}}'
 spec:
   ports:
   # status-port exposes a /healthz/ready endpoint that can be used with GKE Ingress health checks
@@ -18,7 +19,7 @@ spec:
     protocol: TCP
     targetPort: 15021
   # Any ports exposed in Gateway resources should be exposed here.
-  - name: http2
+  - name: http
     port: 80
   - name: https
     port: 443
