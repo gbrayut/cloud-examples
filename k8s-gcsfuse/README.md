@@ -2,6 +2,9 @@
 
 WIP ... see [nginx-gcsfuse](./nginx-gcsfuse) and [shiny-gcsfuse](./shiny-gcsfuse) directories
 
+TODO: new with out using privliged or SYS_ADMIN capability
+https://stackoverflow.com/questions/57525238/is-it-possible-to-run-gcsfuse-without-privileged-mode-inside-gcp-kubernetes
+
 ```shell
 # Get/Change IAM permissions on GCS Bucket
 gsutil iam get gs://gregbray-repo-gcs
