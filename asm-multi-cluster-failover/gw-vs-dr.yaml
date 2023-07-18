@@ -1,0 +1,102 @@
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: shared-istio-gw
+  namespace: istio-ingress
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: http
+    hosts:
+    - "*.example.com"
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: whereami-ingress
+  namespace: sample
+spec:
+  hosts:
+    - whereami.example.com
+  gateways:
+    - istio-ingress/shared-istio-gw
+  http:
+  # Use match to forward specific path prefixes to specific services (Destination rules still apply)
+  - match:
+    - uri:
+        prefix: /app-1
+    route:
+    - destination:
+        host: whereami.app-1.svc.cluster.local
+  - match:
+    - uri:
+        prefix: /app-2
+    route:
+    - destination:
+        host: whereami.app-2.svc.cluster.local
+  # Use match to forward sources to specific subsets of app-1
+  - match:
+    - uri:
+        prefix: /primary
+    route:
+    - destination:
+        host: whereami.app-1.svc.cluster.local
+        subset: primary
+  - match:
+    - uri:
+        prefix: /secondary
+    route:
+    - destination:
+        host: whereami.app-1.svc.cluster.local
+        subset: secondary
+  # For all other paths, forward using locality loadbalancing of app-1 destination rule
+  - route:
+    - destination:
+        host: whereami.app-1.svc.cluster.local
+    timeout: 1s
+    retries:
+      attempts: 3
+      perTryTimeout: 100ms
+---
+# Use rule to setup locality lb and subsets on app-1 (app-2 just used default settings for multi cluster services)
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: whereami-app-1-dr
+  namespace: app-1
+spec:
+  host: whereami.app-1.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      http:
+        maxRequestsPerConnection: 1
+    loadBalancer:
+      simple: ROUND_ROBIN
+      localityLbSetting:
+        enabled: true
+        # If more than 2 targets you can specify explicit failover options
+        # failover:
+        #  - from: us-west1
+        #    to: us-west3
+        # or you can specify label priority for failover https://istio.io/latest/docs/reference/config/networking/destination-rule/#LocalityLoadBalancerSetting
+        failoverPriority:
+        - "topology.kubernetes.io/region"
+        - "topology.kubernetes.io/zone"
+        - "topology.istio.io/cluster"
+    outlierDetection:
+      consecutive5xxErrors: 1
+      interval: 1s
+      baseEjectionTime: 1m
+  subsets:
+  - name: primary
+    labels:
+      # cluster named gke-oregon in us-west1 region of project gregbray-vpc
+      topology.istio.io/cluster: cn-gregbray-vpc-us-west1-gke-oregon
+  - name: secondary
+    labels:
+      # cluster named gke-slc in us-west3 region of project gregbray-vpc
+      topology.istio.io/cluster: cn-gregbray-vpc-us-west3-gke-slc

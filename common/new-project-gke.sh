@@ -58,14 +58,14 @@ gcloud compute networks subnets create gke-iowa-subnet --project=$DEVSHELL_PROJE
 gcloud beta container --project=$DEVSHELL_PROJECT_ID clusters create "gke-iowa" --region "us-central1" \
   --subnetwork "gke-iowa-subnet" --cluster-secondary-range-name "gkepods" --services-secondary-range-name "gkeservices" \
   --master-ipv4-cidr "10.69.1.16/28" --enable-private-nodes --autoscaling-profile optimize-utilization \
-  --workload-pool "$DEVSHELL_PROJECT_ID.svc.id.goog" --no-enable-basic-auth --release-channel "regular" \
+  --workload-pool "$DEVSHELL_PROJECT_ID.svc.id.goog" --fleet-project="$DEVSHELL_PROJECT_ID" --release-channel "regular" \
   --machine-type "e2-standard-4" --image-type "COS_CONTAINERD" --network "projects/$DEVSHELL_PROJECT_ID/global/networks/gke-vpc" \
   --disk-type "pd-standard" --disk-size "100" --max-pods-per-node "110" --logging=SYSTEM,WORKLOAD --monitoring=SYSTEM \
   --no-enable-intra-node-visibility --default-max-pods-per-node "110" --enable-dataplane-v2 \
   --no-enable-master-authorized-networks --addons HorizontalPodAutoscaling,HttpLoadBalancing,NodeLocalDNS,GcePersistentDiskCsiDriver \
   --enable-autoupgrade --enable-autorepair --max-surge-upgrade 3 --max-unavailable-upgrade 0 \
-  --enable-autoscaling --num-nodes "1" --max-nodes=3 --min-nodes=0 \
-  --enable-ip-alias --enable-shielded-nodes
+  --enable-autoscaling --num-nodes "1" --max-nodes=3 --min-nodes=0 --gateway-api "standard" \
+  --enable-ip-alias --enable-shielded-nodes --enable-master-global-access
 
 # create a second node pool using two zones and spot VMs https://cloud.google.com/sdk/gcloud/reference/container/node-pools/create
 gcloud container --project=$DEVSHELL_PROJECT_ID node-pools create "spot-pool" --cluster "gke-iowa" --region "us-central1" \
