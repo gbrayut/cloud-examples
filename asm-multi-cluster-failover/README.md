@@ -167,9 +167,9 @@ kubectl exec -n istio-ingress -it istio-ingressgateway-78d5d78c6-m8b7h -c istio-
 ## Validate Multi-Cluster Mesh Failover
 
 The [gw-vs-dr.yaml](./gw-vs-dr.yaml) example shows how you can configure multi-cluster routing using:
-* [prefix matches](./asm-multi-cluster-failover/gw-vs-dr.yaml#L28-L55) on the virtual service used by istio-ingress gateway. These will only work for requests from outside the cluster, but a similar virtual service could be created for `host: name.namespace.svc.cluster.local`
+* [prefix matches](./gw-vs-dr.yaml#L28-L55) on the virtual service used by istio-ingress gateway. These will only work for requests from outside the cluster, but a similar virtual service could be created for `host: name.namespace.svc.cluster.local`
 * [locality loadbalancing](https://istio.io/latest/docs/tasks/traffic-management/locality-load-balancing/failover/) with [failoverPriority](https://istio.io/latest/docs/reference/config/networking/destination-rule/#LocalityLoadBalancerSetting) in the [destination rule](./gw-vs-dr.yaml#L77-L89)
-* named [subsets](.#L94-L102) in the destination rule for explicit routing (note these do not support automatic failover)
+* named [subsets](./gw-vs-dr.yaml#L94-L102) in the destination rule for explicit routing (note these do not support automatic failover). This uses a special [label](https://istio.io/latest/docs/reference/config/labels/) label to match the GKE clusterID like `topology.istio.io/cluster: cn-gregbray-vpc-us-west1-gke-oregon`
 ```shell
 # Simulate a client outside the cluster but in the same region using the test pod from above
 kubectl exec -it -n istio-system test -- /bin/bash
