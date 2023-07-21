@@ -164,6 +164,22 @@ state:
 updateTime: '2023-04-06T17:21:05.784772586Z'
 ```
 
+## Optional: Configure Traffic Policy
+By default [outboundTrafficPolicy](https://cloud.google.com/service-mesh/docs/managed/enable-managed-anthos-service-mesh-optional-features#outbound_traffic_policy) is set to **ALLOW_ANY** meaning all egress traffic is allowed by the sidecar proxy. If you change to **REGISTRY_ONLY** (only allow egress to registered mesh services) you should also create a dedicated [ServiceEntry](./metadata-google-internal.yaml) so that pods can access the **metadata.google.internal** GKE or GCE metadata server. Another option is excluding the link-local IP in Istio's iptable rules using pod [annotations](https://cloud.google.com/kubernetes-engine/docs/troubleshooting/troubleshooting-security#fails):
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+   ...
+spec:
+  template:
+    metadata:
+      annotations:
+        traffic.sidecar.istio.io/excludeOutboundIPRanges: "169.254.169.254/32"
+```
+
+Note that managed ASM does not support modifying the sidecar-injector (mutating webhook) config using **global.proxy.excludeIPRanges** since that is part of the managed control plane. Also when using [NetworkPolicy and Workload Identity](https://cloud.google.com/kubernetes-engine/docs/concepts/workload-identity#metadata_server), you must allowed egress to ipBlock cidr 169.254.169.254/32 on port 80 (default GCE metadata server) and 988 (GKE Workload Identity daemonset) for all pods/namespaces.
+
 ## Provisioning Istio Ingress and Egress Gateways
 
 To provision Istio Gateways see [Installing and upgrading gateways](https://cloud.google.com/service-mesh/docs/gateways) and [asm-ingressgateway-classic example](../asm-ingressgateway-classic/).

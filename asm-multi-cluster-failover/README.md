@@ -9,7 +9,7 @@ Following the [GKE multi-cluster mesh](https://cloud.google.com/service-mesh/doc
     * Also [authorized networks](https://cloud.google.com/kubernetes-engine/docs/how-to/authorized-networks) should allow cross-cluster access (control plane to control plane) for service discovery
     * All clusters should be registered to the same fleet `--fleet-project="abc"` 
     * Cluster should have Workload Identity `--workload-pool="abc.svc.id.goog"` and [service mesh](../asm-deploy-terraform) configured
-    * [Gateway API](https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways#enable-gateway) is also [recommended](https://istio.io/latest/docs/tasks/traffic-management/ingress/gateway-api/) but not required `--gateway-api="standard"`
+    * Optional: enable [Gateway API](https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways#enable-gateway) so you can configure [mesh](https://istio.io/latest/docs/tasks/traffic-management/ingress/gateway-api/) and single/multi cluster GCLB using [Kubernetes Gateway](https://cloud.google.com/kubernetes-engine/docs/concepts/gateway-api) resources  `--gateway-api="standard"`
 
 1. Create firewall rule(s) to allow [pod-to-pod traffic](https://cloud.google.com/service-mesh/docs/unified-install/gke-install-multi-cluster#create_firewall_rule) across GKE clusters. Something like this using pod IP ranges and gke node tags:
     ```shell
@@ -30,36 +30,44 @@ Following the [GKE multi-cluster mesh](https://cloud.google.com/service-mesh/doc
     # Wait for "code: REVISION_READY details: 'Ready: asm-managed'" on all clusters
     gcloud container fleet mesh describe
 
-    # Then on all clusters enable endpoint discovery using asm-options configmap
+    # Then on all clusters enable endpoint discovery using the asm-options configmap
+    # or use "manual" later if you want to disable it and remove the istio-remote secrets
     kubectl patch configmap/asm-options -n istio-system --type merge -p '{"data":{"multicluster_mode":"connected"}}'
 
-    # Confirm secrets for remote clusters are now available on all clusters
+    # Confirm certificates for remote clusters are now available on all clusters
     $ kubectl get secrets -n istio-system -l istio.io/owned-by=mesh.googleapis.com,istio/multiCluster=true
     NAME                                                                               TYPE     DATA   AGE
     istio-remote-secret-projects-503076227230-locations-us-west3-memberships-gke-slc   Opaque   1      15h
     ```
+## Configure Multi-Cluster Traffic Management
 
-1. Optional: Update `istio-system/istio-asm-managed` (or equivalent) configmap to exclude any services that should [remain local to the cluster](https://istio.io/latest/docs/ops/configuration/traffic-management/multicluster/):
-    ```shell
-    kubectl edit cm -n istio-system istio-asm-managed
-    # it should look something like this to configure services as local only
-    apiVersion: v1
-    data:
-      mesh: |2-
+If desired mesh operators can update the `istio-system/istio-asm-managed` (or equivalent) configmap to exclude any services that should [remain local to the cluster](https://istio.io/latest/docs/ops/configuration/traffic-management/multicluster/):
 
-        # This section can be updated with user configuration settings from https://istio.io/latest/docs/reference/config/istio.mesh.v1alpha1/
-        # Some options required for ASM to not be modified will be ignored
-        serviceSettings:
-        - hosts:
-          - '*.istio-ingress.svc.cluster.local'     # All services in istio-ingress
-          - 'foo.namespace.svc.cluster.local'       # Single sepecific service
-          settings:
-            clusterLocal: true
-    
-    # You can also limit which services get exported to namespaces using the exportTo field
-    # Which can help reduce istio control plane traffic if you have a large number of services
-    # See https://istio.io/latest/docs/ops/best-practices/traffic-management/#cross-namespace-configuration
-    ```
+  * the mesh configmap only changes the local cluster and ideally the same settings should be applied directly to all clusters in the fleet
+  * serviceSettings [clusterLocal](https://istio.io/latest/docs/reference/config/istio.mesh.v1alpha1/#MeshConfig-ServiceSettings-Settings) changes how endpoints for the services IN that namespace are handled for all sidecars/gateways in the mesh
+  * it only allows disabling cross-cluster endpoints (setting `clusterLocal: false` has no effect and those entries will be ignored)
+  * you can set the default [localityLbSetting](https://istio.io/latest/docs/reference/config/istio.mesh.v1alpha1/#MeshConfig-ServiceSettings-Settings:~:text=No-,localityLbSetting,-LocalityLoadBalancerSetting) including failoverPriority values in the MeshConfig
+    * but you currently cannot globally enable the outlierDetection dependency (only by using destination rules)
+  * this essentially means mesh operators can configure per service/namespace **opt-out** of cross-cluster routing, but there is no mechanism to override MeshConfig clusterLocal settings or **opt-in** specific services/namespaces for cross-cluster routing
+  * service owners should configure the [localityLbSetting](https://istio.io/latest/docs/reference/config/networking/destination-rule/#LocalityLoadBalancerSetting) in their destination rules to either allow cross-cluster failover (usually via **failoverPolicy**) or can mimic clusterLocal using **distribute** with specific weights
+
+  ```shell
+  kubectl edit cm -n istio-system istio-asm-managed
+  # it should look something like this to configure services as local only
+  apiVersion: v1
+  data:
+    mesh: |2-
+
+      # This section can be updated with user configuration settings from https://istio.io/latest/docs/reference/config/istio.mesh.v1alpha1/
+      # Some options required for ASM to not be modified will be ignored
+      serviceSettings:
+      - hosts:
+        - '*.istio-ingress.svc.cluster.local'     # All services in istio-ingress
+        - 'foo.namespace.svc.cluster.local'       # Single sepecific service
+        settings:
+          clusterLocal: true
+  ```
+You can also limit which namespaces each mesh service gets exported to by using the MeshConfig [defaultServiceExportTo](https://istio.io/latest/docs/reference/config/istio.mesh.v1alpha1/#:~:text=defaultServiceExportTo), by annotation on [Service Resources](https://istio.io/latest/docs/reference/config/annotations/#:~:text=networking.istio.io/exportTo), or by setting **exportTo** values on VirtualService or ServiceEntry resources. This can help reduce Istio control plane traffic if you have a very large service mesh (10,000+ services or 1,000+ namespaces). See [Traffic Management Best Practices](https://istio.io/latest/docs/ops/best-practices/traffic-management/#cross-namespace-configuration) for more details.
 
 ## Deploy Istio Resources and Sample App
 There are a [few different ways](../asm-ingressgateway-classic) to install istio-ingressgateway, but this example uses the `networking.istio.io` istio classic api resources and a GKE managed NLB (service type LoadBalancer):
@@ -81,9 +89,9 @@ kubectl apply -f https://github.com/gbrayut/cloud-examples/raw/main/asm-mtls-tes
 kubectl apply -f https://github.com/gbrayut/cloud-examples/raw/main/asm-mtls-testing/app-2-strict.yaml
 ```
 
-## Configure private zone DNS record for Istio-IngressGateway NLBs
+## Configure Private Zone DNS Records for Istio-IngressGateway NLBs
 
-Use [Cloud DNS with routing policy](https://cloud.google.com/blog/products/networking/introducing-automated-failover-for-private-workloads-using-cloud-dns-routing-policies-with-health-checks) of either weighted, geo, or failover to manage request across the GKE clusters. In this case we will use [failover policy](https://cloud.google.com/dns/docs/policies-overview#failover-policy) to create an active/hot-standby for istio-ingressgateway.
+Use [Cloud DNS with routing policy](https://cloud.google.com/blog/products/networking/introducing-automated-failover-for-private-workloads-using-cloud-dns-routing-policies-with-health-checks) of either weighted, geo, or failover to route request across the GKE clusters. This example uses [failover policy](https://cloud.google.com/dns/docs/policies-overview#failover-policy) to create an active/hot-standby for istio-ingressgateway:
 
 ```shell
 gcloud dns --project=vpc-project record-sets create \
@@ -92,19 +100,14 @@ gcloud dns --project=vpc-project record-sets create \
     --routing-policy-primary-data="projects/gke-project/regions/us-west1/forwardingRules/a321f0be283a140b596e0ec52008fae1" \
     --backup-data-trickle-ratio="0.0" --routing-policy-backup-data-type="GEO" \
     --routing-policy-backup-data="us-west1=projects/gke-project/regions/us-west3/forwardingRules/ac32a3df087494e7ca0f61c6685050ea"
-
-# Can test that the failover works by scaling replica down to zero (after removing HPA).
-# But it may take x minutes for the failover to work
-kubectl scale deployment -n istio-ingress istio-ingressgateway --replicas=0
-TODO: fix health check? default uses envoy 15021, and doesn't seem to fail with zero replicas...
 ```
 
 ## Validate Multi-Cluster Mesh Endpoint Discovery
 
-With everything in place we can now validate the mesh is routing requests for services across both clusters. In the examples below we are designating the `gke-oregon` cluster (pod IPs: `10.96.x.x`, service IPs: `10.68.x.x`) as the primary and `gke-slc` cluster (pod IPs: `10.104.x.x`, service IPs: `10.67.x.x`) as the secondary.
+With everything in place you can now validate the mesh is routing requests for services across both clusters. This example has the `gke-oregon` cluster (pod IPs: `10.96.x.x`, service IPs: `10.68.x.x`) as primary and `gke-slc` cluster (pod IPs: `10.104.x.x`, service IPs: `10.67.x.x`) as secondary:
 
 ```shell
-# Add a test pod to istio-system namespace so we can do curl testing of NLBs without 
+# Add a test pod to istio-system namespace for curl testing of NLBs without 
 # an istio sidecar (better mimics request from a VM outside the mesh)
 kubectl run test -n istio-system --image=us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.19
 
@@ -167,9 +170,12 @@ kubectl exec -n istio-ingress -it istio-ingressgateway-78d5d78c6-m8b7h -c istio-
 ## Validate Multi-Cluster Mesh Failover
 
 The [gw-vs-dr.yaml](./gw-vs-dr.yaml) example shows how you can configure multi-cluster routing using:
-* [prefix matches](./gw-vs-dr.yaml#L28-L55) on the virtual service used by istio-ingress gateway. These will only work for requests from outside the cluster, but a similar virtual service could be created for `host: name.namespace.svc.cluster.local`
-* [locality loadbalancing](https://istio.io/latest/docs/tasks/traffic-management/locality-load-balancing/failover/) with [failoverPriority](https://istio.io/latest/docs/reference/config/networking/destination-rule/#LocalityLoadBalancerSetting) in the [destination rule](./gw-vs-dr.yaml#L77-L89)
-* named [subsets](./gw-vs-dr.yaml#L94-L102) in the destination rule for explicit routing (note these do not support automatic failover). This uses a special [label](https://istio.io/latest/docs/reference/config/labels/) label to match the GKE clusterID like `topology.istio.io/cluster: cn-gregbray-vpc-us-west1-gke-oregon`
+
+* [locality loadbalancing](https://istio.io/latest/docs/tasks/traffic-management/locality-load-balancing/failover/) with [failoverPriority](https://istio.io/latest/docs/reference/config/networking/destination-rule/#LocalityLoadBalancerSetting) in the [destination rule](./gw-vs-dr.yaml#L77-L89). This is the only option that does active-passive failover between cross-cluster endpoints.
+* [prefix matches](./gw-vs-dr.yaml#L28-L55) on the virtual service used by istio-ingress gateway. These will only work for requests from outside the cluster, but a similar virtual service could be created for `host: name.namespace.svc.cluster.local`. Note that unless there is a destination rule with locality/failover routing, you may see `no healthy upstream` when the selected subset has no healthy endpoints.
+* named [subsets](./gw-vs-dr.yaml#L94-L102) in the destination rule for explicit routing (note these do not support automatic failover outside the subset)
+  * this uses a special [label](https://istio.io/latest/docs/reference/config/labels/) to match the GKE clusterID like `topology.istio.io/cluster: cn-gregbray-vpc-us-west1-gke-oregon`
+  * those values can also be use as [source label matching](https://istio.io/latest/docs/ops/configuration/traffic-management/multicluster/#partitioning-services) in virtual services
 ```shell
 # Simulate a client outside the cluster but in the same region using the test pod from above
 kubectl exec -it -n istio-system test -- /bin/bash

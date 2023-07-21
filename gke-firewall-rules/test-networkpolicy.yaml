@@ -34,7 +34,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-workload-identity
-  namespace: app-2  # policy is being applied to this namespace
+  namespace: app-2  # policy is being applied to this namespace, but this is usually needed for all namespaces
 spec:
   policyTypes:
   - Egress
@@ -44,16 +44,11 @@ spec:
       # Allow GKE Metadata Server access (required for workload identity)
       - ipBlock:
           cidr: 169.254.169.254/32
-      # Docs say it previously also use these but in my testing http://metadata.google.internal resovled to the above IP
-      #- ipBlock:
-      #    cidr: 169.254.169.252/32
-      #- ipBlock:
-      #    cidr: 127.0.0.1/32
       ports:
       - protocol: TCP
-        port: 80
-      #- protocol: TCP
-      #  port: 988
+        port: 80        # GCE Instance Metadata Server
+      - protocol: TCP
+        port: 988       # GKE Workload Identity Metadata Server proxy (daemonset)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
