@@ -98,7 +98,7 @@ spec:
   - port: 9001
     protocol: TCP
     name: grpc-tls
-    appProtocol: HTTP2  # Required by gateway api for HTTP2 from GCLB to backend https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#load-balancer-tls
+    appProtocol: TCP  # may require HTTP2 when using gateway api for HTTP2 from GCLB to backend https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#load-balancer-tls
   selector:
     app: grpcbin
   type: LoadBalancer    # This creates an L4 Network LB

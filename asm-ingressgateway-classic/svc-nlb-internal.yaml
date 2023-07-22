@@ -28,6 +28,9 @@ spec:
   - name: https
     appProtocol: https
     port: 443
+  - name: tls
+    appProtocol: tls
+    port: 8443
   selector:
     istio: ingressgateway
     app: istio-ingressgateway

@@ -1,0 +1,125 @@
+# NOTE: if the backend service is not using https/http2/grpc and requires raw TLS, you'll need to use
+# a virtual service with spec.tls instead of spec.http https://istio.io/latest/docs/reference/config/networking/virtual-service/#:~:text=tls-,TLSRoute%5B%5D,-An%20ordered%20list
+# those kinds of services usually also get a dedicated port on the istio-ingressgateway service and gateway resources
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: shared-istio-gw
+  namespace: istio-ingress
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: http
+    hosts:
+    - "*.example.com"
+  # https://istio.io/latest/docs/tasks/traffic-management/ingress/secure-ingress/#configure-a-tls-ingress-gateway-for-multiple-hosts
+  # kubectl create -n istio-ingress secret tls shared-istio-gw-wildcard-cert --key=star.pem --cert=star.crt
+  - port:
+      number: 443
+      name: https
+      protocol: https
+    tls:
+      mode: SIMPLE
+      credentialName: shared-istio-gw-wildcard-cert
+    hosts:
+    - "*.example.com"
+  # separate port for non-terminated tls passthru https://preliminary.istio.io/latest/docs/tasks/traffic-management/ingress/ingress-sni-passthrough/
+  - port:
+      number: 8443
+      name: tls-passthru
+      protocol: TLS
+    tls:
+      mode: PASSTHROUGH
+    hosts:
+    - "*.example.com"
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: grpc-ingress
+  namespace: grpcbin
+spec:
+  hosts:
+    - grpc.example.com
+    - whereami.example.com
+  gateways:
+    - istio-ingress/shared-istio-gw
+  http:
+  # Use match to forward specific path prefixes to specific services (Destination rules still apply)
+  - match:
+    - uri:
+        prefix: /metrics
+    route:
+    - destination:
+        host: grpcbin.grpcbin.svc.cluster.local
+        port: 
+          number: 8080
+  # optional: grpcurl first does a reflection call. Routing those to non-tls 9000 makes testing a bit easier
+  - match:
+    - uri:
+        prefix: /grpc.reflection
+    route:
+    - destination:
+        host: grpcbin.grpcbin.svc.cluster.local
+        port: 
+          number: 9000
+  # For all other paths, forward to grpc backend
+  # trying to use the tls backend here would fail with: unexpected HTTP status code received from server: 400 (Bad Request); malformed header: missing HTTP content-type
+  # TODO: see if any rewrite or header changes can fix that? but I think it is some kind of protocol mismatch
+  - route:
+    - destination:
+        host: grpcbin.grpcbin.svc.cluster.local
+        port:
+          number: 9001
+    timeout: 1s
+    retries:
+      attempts: 3
+      perTryTimeout: 100ms
+    headers:
+      request:
+        add:
+          "X-TESTING": "this-is-a-test"   # make it easier to find requests in envoy logs that match this section
+  # the above are all for port 443 (https listener), below are all for port 8443 (tls passthrough)
+  tls:
+  # SNI match for whereami.example.com
+  - match:
+    - port: 8443
+      sniHosts:
+      - whereami.example.com
+    route:
+    # this doesn't work because we don't have a TLS listener in the whereami container. But it would/should work for an HTTPS container
+    # when using http target port with https passthrough expect error: curl: (35) OpenSSL/3.0.9: error:0A00010B:SSL routines::wrong version number
+    - destination:
+        host: grpcbin.grpcbin.svc.cluster.local
+        port:
+          number: 8080
+  # SNI match for grpc.example.com
+  - match:
+    - port: 8443
+      sniHosts:
+      - grpc.example.com
+    route:
+    - destination:
+        host: grpcbin.grpcbin.svc.cluster.local
+        port:
+          number: 9001 # grpc tls port should work
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: grpcbin-dr
+  namespace: grpcbin
+spec:
+  host: grpcbin.grpcbin.svc.cluster.local
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+    #portLevelSettings:
+    #- port:
+    #    number: 9001
+    #  tls:
+    #    mode: DISABLE # SIMPLE
