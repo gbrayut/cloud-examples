@@ -97,6 +97,10 @@ spec:
         host: grpcbin.grpcbin.svc.cluster.local
         port:
           number: 8080
+        # but using a valid listener like this one should work as long as the service's appProtocol is set correctly
+        # host: kubernetes.default.svc.cluster.local
+        # port:
+        #   number: 443
   # SNI match for grpc.example.com
   - match:
     - port: 8443
