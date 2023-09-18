@@ -1,0 +1,110 @@
+# From https://cloud.google.com/service-mesh/docs/managed/service-mesh-cloud-gateway
+# Current preview only works in GKE with Managed ASM on Rapid channel
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: GatewayClass
+metadata:
+  name: asm-l7-gxlb   # Currently only supports external HTTPS GCLB
+spec:
+  controllerName: mesh.cloud.google.com/gateway
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    istio.io/rev: default # asm-managed-rapid
+  name: istio-ingress
+---
+# This asm-l7-gxlb gateway will cause the controller to generate additional resources:
+#   1) asm-gw-gke-servicemesh-cloud-gw (gke-l7-gxlb class) GCLB managed by GoogleGKEGatewayController
+#   2) asm-gw-istio-servicemesh-cloud-gw (istio class) managed by istio.io/gateway-controller
+kind: Gateway
+apiVersion: gateway.networking.k8s.io/v1beta1
+metadata:
+  name: servicemesh-cloud-gw
+  namespace: istio-ingress
+spec:
+  gatewayClassName: asm-l7-gxlb
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 80
+    allowedRoutes:
+      namespaces:
+        from: All
+  - name: https
+    protocol: HTTPS
+    port: 443
+    allowedRoutes:
+      namespaces:
+        from: All
+    hostname: "*.example.com"   # Optional, see https://gateway-api.sigs.k8s.io/guides/tls/?h=wil#wildcard-tls-listeners
+    tls:
+      mode: Terminate
+      options:
+        networking.gke.io/pre-shared-certs: star-example-com
+  #addresses:
+  #- type: NamedAddress
+  #  value: whereami-ip
+---
+# Requires asm-whereami.yaml in default namespace
+kind: HTTPRoute
+apiVersion: gateway.networking.k8s.io/v1beta1
+metadata:
+  name: where-route
+  namespace: default
+spec:
+ parentRefs:
+ - kind: Gateway
+   name: servicemesh-cloud-gw
+   namespace: istio-ingress
+ hostnames:
+ - "where.example.com"
+ # Use *.example.com if you want one route to match wildcard domain
+ # See: kubectl explain httproute.spec.hostnames
+ rules:
+ - matches:
+   - headers:
+     - name: version
+       value: v2
+   backendRefs:
+   - name: whereami-v2
+     port: 8080
+ - backendRefs:
+   - name: whereami-v1
+     port: 8080
+---
+# If using a wildcard cert on gateway, can combine hostnames into single or multiple HTTPRoute resources
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: v1-host-route
+  namespace: default
+spec:
+ parentRefs:
+ - kind: Gateway
+   name: servicemesh-cloud-gw
+   namespace: istio-ingress
+ hostnames:
+ - "v1.example.com"
+ - "where-v1.example.com"
+ rules:
+ - backendRefs:
+   - name: whereami-v1
+     port: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: v2-host-route
+  namespace: default
+spec:
+ parentRefs:
+ - kind: Gateway
+   name: servicemesh-cloud-gw
+   namespace: istio-ingress
+ hostnames:
+ - "v2.example.com"
+ rules:
+ - backendRefs:
+   - name: whereami-v2
+     port: 8080

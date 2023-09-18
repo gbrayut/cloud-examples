@@ -1,0 +1,65 @@
+# Istio issue https://github.com/istio/istio/issues/40680 is not fixed until version 1.19
+# It will cause errors when trying to forward istio-ingressgateway requests to https backend using tls mode SIMPLE
+# error 503: upstream connect error or disconnect/reset before headers. reset reason: connection termination
+#
+# Workaround is to use excludeInboundPorts on https backend pod or set PeerAuthentication to DISABLE
+#
+# https://cloud.google.com/service-mesh/docs/security/configuring-mtls
+# PeerAuthentication is used to configure what type of mTLS traffic the inbound sidecar will accept
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: caddy-pa
+  namespace: caddy    # Can only configure on inbound sidecar side using workload selectors
+spec:
+  selector:
+    matchLabels:
+      app: caddy
+  mtls:
+    # https://istio.io/latest/docs/reference/config/security/peer_authentication/#PeerAuthentication-MutualTLS-Mode
+    mode: UNSET   # Inherits value from namespace or uses PERMISSIVE by default
+  portLevelMtls:
+    8080:
+      mode: STRICT    # Require sidecar-to-sidecar mTLS for inbound requests on http port
+    8443:
+      mode: DISABLE   # Workaround for https://github.com/istio/istio/issues/40680 until istio 1.19 is available
+    9080:
+      mode: DISABLE   # Disable mTLS for any container ports that bypass inbound sidecar
+    9443:
+      mode: DISABLE   # Disable mTLS for any container ports that bypass inbound sidecar
+---
+# The above will fix istio-ingressgateway but break other pod-to-pod requests:
+# curl: (35) error:1408F10B:SSL routines:ssl3_get_record:wrong version number
+# You can fix those using a separate destination rules like:
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: caddy-dr
+  namespace: app-1    # Fix app-1 workloads being able to send requests to caddy's https backend service
+spec:
+  host: caddy.caddy.svc.cluster.local
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+    portLevelSettings:
+    - port:
+        number: 80
+      tls:
+        mode: ISTIO_MUTUAL
+    - port:
+        number: 19080
+      tls:
+        mode: DISABLE
+    - port:
+        number: 443
+      tls:
+        mode: DISABLE    # For in mesh pod-to-pod requests this needs to be DISABLE until using istio 1.19
+        insecureSkipVerify: true
+        sni: "caddy.example.com"
+    - port:
+        number: 19443
+      tls:
+        mode: SIMPLE
+        insecureSkipVerify: true
+        sni: "caddy.example.com"
+# After upgrading to Istio 1.19, both of these workarounds can be removed

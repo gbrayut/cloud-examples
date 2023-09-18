@@ -1,0 +1,162 @@
+# Create a caddy web server with internal tls certificates for testing https backends in istio service mesh
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    istio.io/rev: default
+  name: caddy
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: caddy
+  namespace: caddy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: caddy
+  template:
+    metadata:
+      labels:
+        app: caddy
+      annotations:
+        traffic.sidecar.istio.io/excludeInboundPorts: "9080,9443"   # For testing port based exclusion from service mesh
+        # sidecar.istio.io/inject: "false"    # Use this to entirely disable sidecar injection
+    spec:
+      containers:
+      - name: caddy
+        image: caddy:2-alpine
+        imagePullPolicy: IfNotPresent
+        command: ["caddy", "run", "--config", "/Caddyfile"]
+        #env:
+        #- name: ADMIN_USER
+        #  valueFrom:
+        #    secretKeyRef:
+        #      name: basic-auth
+        #      key: user
+        #- name: ADMIN_PASSWORD
+        #  valueFrom:
+        #    secretKeyRef:
+        #      name: basic-auth
+        #      key: password
+        resources:
+          limits:
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /Caddyfile
+          name: caddy-config
+          subPath: Caddyfile
+      volumes:
+        - name: caddy-config
+          configMap:
+            name: caddy-config
+            items:
+              - key: Caddyfile
+                path: Caddyfile
+                mode: 0644
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: caddy
+  namespace: caddy
+  annotations:
+    # https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#create
+    networking.gke.io/load-balancer-type: "Internal"
+    networking.gke.io/internal-load-balancer-allow-global-access: "true"
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+    appProtocol: http
+    name: http
+  - port: 19080
+    targetPort: 9080
+    appProtocol: http
+    name: http-excluded
+  - port: 443
+    targetPort: 8443
+    appProtocol: https
+    name: https
+  - port: 19443
+    targetPort: 9443
+    appProtocol: https
+    name: https-excluded
+  selector:
+    app: caddy
+  type: LoadBalancer    # Could use ClusterIP instead, but internal NLB for direct testing of caddy can be useful
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: caddy-config
+  namespace: caddy
+  labels:
+    app: caddy
+data:
+  # https://caddyserver.com/docs/caddyfile
+  Caddyfile: |
+    {
+    	admin 127.0.0.1:2019 # https://caddyserver.com/docs/api
+    	auto_https off
+    	#email
+      
+      local_certs
+      skip_install_trust
+
+      # https://caddyserver.com/docs/caddyfile/directives/log#log
+      log default {
+        format console
+        level debug
+      }
+    }
+
+    # http and http-excluded backends
+    http://:8080 http://:9080 {
+      log
+
+    	respond 200 {
+        # add trailing newline to http response
+    		body `success on http
+    `
+    		close
+    	}
+    }
+
+    # https and https-excluded backends
+    # Must specify domain(s) if you want caddy to generate internal certs. Should also match portLevelSettings sni settings.
+    https://example.com:8443 https://example.com:9443 https://caddy.example.com:8443 https://caddy.example.com:9443 {
+      log
+
+    	tls internal {
+        on_demand
+        insecure_secrets_log /tmp/cert.log
+      }
+
+      header /* x-testing "this is a test 123"
+
+    	respond 200 {
+    		body `success on https
+    `
+    		close
+    	}
+    }
+
+    # pod-to-pod https and https-excluded backends
+    https://caddy.caddy.svc.cluster.local:8443 https://caddy.caddy.svc.cluster.local:9443 {
+      log
+
+    	tls internal {
+        on_demand
+        insecure_secrets_log /tmp/cert.log
+      }
+
+      header /* x-testing "this is a test 123"
+
+    	respond 200 {
+    		body `success on https k8s svc discovery
+    `
+    		close
+    	}
+    }

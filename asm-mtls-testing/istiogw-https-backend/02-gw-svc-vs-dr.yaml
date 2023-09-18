@@ -1,0 +1,196 @@
+# Expose gw envoy service via an NLB with correct port and appProtocol settings:
+apiVersion: v1
+kind: Service
+metadata:
+  name: istio-ingressgateway
+  namespace: istio-ingress
+  labels:
+    app: istio-ingressgateway
+    istio: ingressgateway
+  # Easier to test with external NLB, but could also use internal if desired
+  #annotations:
+  #  networking.gke.io/load-balancer-type: "Internal"
+  #  networking.gke.io/internal-load-balancer-allow-global-access: "true"
+spec:
+  ports:
+  # status-port exposes a /healthz/ready endpoint that can be used with GKE Ingress health checks
+  - name: status-port
+    port: 15021
+    protocol: TCP
+    targetPort: 15021
+  # Any ports exposed in Gateway resources should be listed here as well
+  # See also https://istio.io/latest/docs/ops/configuration/traffic-management/protocol-selection/
+  - name: http
+    appProtocol: http
+    port: 80
+  - name: https
+    appProtocol: https
+    port: 443
+  selector:
+    istio: ingressgateway
+    app: istio-ingressgateway
+  type: LoadBalancer
+---
+# Setup istio resources for SIMPLE tls. PASSTHROUGH is another option but not covered in this example
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: shared-istio-gw
+  namespace: istio-ingress
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: http
+    hosts:
+    - "*.example.com"
+    - "example.com"   # apex is not included in wildcard and must be explicitly added if desired
+    # Often in production you would only allow http listener for redirects:
+    #tls:
+    #  httpsRedirect: true     # sends 301 redirect for http requests
+
+  # https://istio.io/latest/docs/tasks/traffic-management/ingress/secure-ingress/#configure-a-tls-ingress-gateway-for-multiple-hosts
+  - port:
+      number: 443
+      name: https
+      protocol: https
+    tls:
+        mode: SIMPLE
+        credentialName: shared-istio-gw-wildcard-cert
+        # kubectl create -n istio-ingress secret tls shared-istio-gw-wildcard-cert --key=$HOME/code/demos/asm/key-star.pem --cert=$HOME/code/demos/asm/cert-star.crt
+    hosts:
+    - "*.example.com"
+    - "example.com"
+---
+# Use VS to define gw routing logic https://istio.io/latest/docs/reference/config/networking/virtual-service/
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: anywhere-vs
+  namespace: istio-ingress
+spec:
+  hosts:
+  #- "anywhere.example.com"
+  - "*.example.com"
+  - "example.com"
+  gateways:
+  - shared-istio-gw
+  http:
+  # Use match to forward specific example.com/whatever path prefixes
+  - match:
+    - uri:
+        prefix: /app-1        # Test whereami service
+    route:
+    - destination:
+        host: whereami.app-1.svc.cluster.local
+        port: 
+          number: 80
+  - match:
+    - uri:
+        prefix: /c80          # Test caddy http service
+    route:
+    - destination:
+        host: caddy.caddy.svc.cluster.local
+        port: 
+          number: 80
+  - match:
+    - uri:
+        prefix: /c19080       # Test caddy http service with excludeInboundPorts
+    route:
+    - destination:
+        host: caddy.caddy.svc.cluster.local
+        port: 
+          number: 19080
+  - match:
+    - uri:
+        prefix: /c443         # Test caddy https service
+    route:
+    - destination:
+        host: caddy.caddy.svc.cluster.local
+        port: 
+          number: 443
+  - match:
+    - uri:
+        prefix: /c19443       # Test caddy https service with excludeInboundPorts
+    route:
+    - destination:
+        host: caddy.caddy.svc.cluster.local
+        port: 
+          number: 19443
+  # For all other paths, just forward to whereami apps
+  - route:
+    - destination:
+        host: whereami.app-1.svc.cluster.local
+      weight: 50
+    - destination:
+        host: whereami.app-2.svc.cluster.local
+      weight: 0
+---
+# DestinationRule is used to configure what type of TLS traffic the sidecar will send.
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: caddy-dr
+  namespace: caddy    # creating dr in backend namespace will apply the settings mesh-wide
+spec:
+  host: caddy.caddy.svc.cluster.local
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+    portLevelSettings:
+    - port:
+        number: 80
+      tls:
+        mode: ISTIO_MUTUAL    # sidecar-to-sidecar with mTLS, then http backend
+    - port:
+        number: 19080
+      tls:
+        mode: DISABLE         # sidecar-direct-to-container with no tls to http backend
+    - port:
+        number: 443
+      tls:
+        mode: ISTIO_MUTUAL    # sidecar-to-sidecar with mTLS, then https backend (works for everything but istio-ingressgateway clients)
+        insecureSkipVerify: true  # Required if cert is not trusted. See also https://istio.io/latest/docs/reference/config/istio.mesh.v1alpha1/#MeshConfig-CertificateData:~:text=CertificateData%5B%5D-,The%20extra%20root%20certificates,-for%20workload%2Dto
+        sni: "caddy.example.com"  # Required if https backend uses specific SNI. see https://istio.io/latest/docs/reference/config/networking/destination-rule/#:~:text=SNI%20string%20to%20present
+    - port:
+        number: 19443
+      tls:
+        mode: SIMPLE          # sidecar-direct-to-container with tls to https backend
+        insecureSkipVerify: true
+        sni: "caddy.example.com"
+---
+# A separate DestinationRule is required for istio-ingressgateway to prevent error: Client sent an HTTP request to an HTTPS server.
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: caddy-dr
+  namespace: istio-ingress
+spec:
+  host: caddy.caddy.svc.cluster.local
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+    portLevelSettings:
+    - port:
+        number: 80
+      tls:
+        mode: ISTIO_MUTUAL
+    - port:
+        number: 19080
+      tls:
+        mode: DISABLE
+    - port:
+        number: 443
+      tls:
+        mode: SIMPLE    # For istio-ingressgateway this needs to be SIMPLE instead of ISTIO_MUTUAL
+        insecureSkipVerify: true
+        sni: "caddy.example.com"
+    - port:
+        number: 19443
+      tls:
+        mode: SIMPLE
+        insecureSkipVerify: true
+        sni: "caddy.example.com"
