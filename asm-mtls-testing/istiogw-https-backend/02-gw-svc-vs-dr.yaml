@@ -152,14 +152,14 @@ spec:
     - port:
         number: 443
       tls:
-        mode: ISTIO_MUTUAL    # sidecar-to-sidecar with mTLS, then https backend (works for everything but istio-ingressgateway clients)
-        insecureSkipVerify: true  # Required if cert is not trusted. See also https://istio.io/latest/docs/reference/config/istio.mesh.v1alpha1/#MeshConfig-CertificateData:~:text=CertificateData%5B%5D-,The%20extra%20root%20certificates,-for%20workload%2Dto
-        sni: "caddy.example.com"  # Required if https backend uses specific SNI. see https://istio.io/latest/docs/reference/config/networking/destination-rule/#:~:text=SNI%20string%20to%20present
+        mode: ISTIO_MUTUAL    # sidecar-to-sidecar with mTLS, then https backend (works for everything but istio-ingressgateway clients before version 1.19)
+        #insecureSkipVerify: true   # Required if cert is not trusted. See also https://istio.io/latest/docs/reference/config/istio.mesh.v1alpha1/#MeshConfig-CertificateData:~:text=CertificateData%5B%5D-,The%20extra%20root%20certificates,-for%20workload%2Dto
+        sni: "caddy.example.com"    # Required if https backend uses specific SNI. see https://istio.io/latest/docs/reference/config/networking/destination-rule/#:~:text=SNI%20string%20to%20present
     - port:
         number: 19443
       tls:
         mode: SIMPLE          # sidecar-direct-to-container with tls to https backend
-        insecureSkipVerify: true
+        #insecureSkipVerify: true
         sni: "caddy.example.com"
 ---
 # A separate DestinationRule is required for istio-ingressgateway to prevent error: Client sent an HTTP request to an HTTPS server.
@@ -185,12 +185,12 @@ spec:
     - port:
         number: 443
       tls:
-        mode: SIMPLE    # For istio-ingressgateway this needs to be SIMPLE instead of ISTIO_MUTUAL
-        insecureSkipVerify: true
+        mode: SIMPLE    # For istio-ingressgateway this needs to be SIMPLE instead of ISTIO_MUTUAL until the ALPN issue is fixed in 1.19
+        #insecureSkipVerify: true
         sni: "caddy.example.com"
     - port:
         number: 19443
       tls:
-        mode: SIMPLE
-        insecureSkipVerify: true
+        mode: SIMPLE    # This would always be SIMPLE unless the backend service natively supports MTLS using Istio certs (not common)
+        #insecureSkipVerify: true
         sni: "caddy.example.com"

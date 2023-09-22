@@ -91,3 +91,37 @@ kubectl logs -n istio-ingress deploy/istio-ingressgateway | less -S
 istioctl proxy-config all deploy/istio-ingressgateway.istio-ingress
 istioctl pc cluster deploy/istio-ingressgateway.istio-ingress --fqdn caddy.caddy.svc.cluster.local -o yaml
 ```
+
+## More Notes
+
+I not sure if/when `insecureSkipVerify: true` is required as it seems to work fine even for self signed certs when disabled.
+
+```
+# If you see this when testing NLB to istio-ingressgateway it may be a gateway cert issue (Like missing secrets in istio-ingress namespace)
+* ALPN: offers h2,http/1.1
+* TLSv1.3 (OUT), TLS handshake, Client hello (1):
+* Recv failure: Connection reset by peer
+* OpenSSL SSL_connect: Connection reset by peer in connection to example.com:443
+* Closing connection 0
+curl: (35) Recv failure: Connection reset by peer
+
+# If you see this when using https:// to access a mesh service, try http:// instead (or changing tls mode in destination rule)
+* ALPN: offers http/1.1
+* TLSv1.3 (OUT), TLS handshake, Client hello (1):
+* error:1408F10B:SSL routines:ssl3_get_record:wrong version number
+* Closing connection 0
+curl: (35) error:1408F10B:SSL routines:ssl3_get_record:wrong version number
+
+# If you see this for istio-ingressgateway forwarding to https service, use tls mode SIMPLE instead of ISTIO_MUTUAL
+< HTTP/2 503
+< content-length: 218
+< content-type: text/plain
+< date: Fri, 22 Sep 2023 20:34:41 GMT
+< server: istio-envoy
+<
+* Connection #0 to host example.com left intact
+upstream connect error or disconnect/reset before headers. retried and the latest reset reason: connection failure, transport failure reason: TLS error: 268435581:SSL routines:OPENSSL_internal:CERTIFICATE_VERIFY_FAILED
+
+# Caddy doesn't support generating certificates for an IP address based SNI. You would also see errors in the caddy logs.
+upstream connect error or disconnect/reset before headers. retried and the latest reset reason: connection failure, transport failure reason: TLS error: 268436536:SSL routines:OPENSSL_internal:TLSV1_ALERT_INTERNAL_ERROR
+```

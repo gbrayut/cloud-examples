@@ -23,10 +23,11 @@ spec:
       mode: STRICT    # Require sidecar-to-sidecar mTLS for inbound requests on http port
     8443:
       mode: DISABLE   # Workaround for https://github.com/istio/istio/issues/40680 until istio 1.19 is available
-    9080:
-      mode: DISABLE   # Disable mTLS for any container ports that bypass inbound sidecar
-    9443:
-      mode: DISABLE   # Disable mTLS for any container ports that bypass inbound sidecar
+    # These ports already bypass the inbound proxy, so no use making changes to inbound sidecar proxy
+    #9080:
+    #  mode: DISABLE   # Disable mTLS for any container ports that bypass inbound sidecar
+    #9443:
+    #  mode: DISABLE   # Disable mTLS for any container ports that bypass inbound sidecar
 ---
 # The above will fix istio-ingressgateway but break other pod-to-pod requests:
 # curl: (35) error:1408F10B:SSL routines:ssl3_get_record:wrong version number
@@ -54,12 +55,13 @@ spec:
         number: 443
       tls:
         mode: DISABLE    # For in mesh pod-to-pod requests this needs to be DISABLE until using istio 1.19
-        insecureSkipVerify: true
+        #insecureSkipVerify: true
         sni: "caddy.example.com"
     - port:
         number: 19443
       tls:
         mode: SIMPLE
-        insecureSkipVerify: true
+        #insecureSkipVerify: true
         sni: "caddy.example.com"
-# After upgrading to Istio 1.19, both of these workarounds can be removed
+# After upgrading to Istio 1.19, both of these workarounds can be removed and both pod-to-pod and istio-ingressgateway
+# should support using tls mode ISTIO_MUTUAL after excludeInboundPorts annotation is removed from backend pods
