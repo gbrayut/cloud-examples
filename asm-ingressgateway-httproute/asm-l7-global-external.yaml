@@ -1,0 +1,107 @@
+# Configure Google External L7 Loadbalancer using Gateway API
+# see https://cloud.google.com/kubernetes-engine/docs/how-to/gatewayclass-capabilities
+kind: Gateway
+apiVersion: gateway.networking.k8s.io/v1beta1
+metadata:
+  name: asm-gw-lb
+  namespace: istio-ingress
+  annotations:
+    # Assign certs via Certificate Manager https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-certificate-manager
+    # This is the certificate that will be presented to external clients using the GCLB
+    networking.gke.io/certmap: gke-gateway-map
+spec:
+  gatewayClassName: gke-l7-global-external-managed    # Could also use a multi cluster (-mc) version
+  listeners:
+
+  # Optional http listener. See HTTPS Redirect filter in HTTPRoute
+  - name: http
+    protocol: HTTP
+    port: 80
+
+  - name: https
+    protocol: HTTPS
+    port: 443
+    
+    # Or instead of using a certmap, assign ssl certs similar to classic GCLBs https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-ssl-certificate
+    #tls:
+    #  mode: Terminate    # Must terminate, Passthrough only supported on a few GCLB classes
+    #  options: 
+    #    networking.gke.io/pre-shared-certs: "test-cert"
+  # optional: configure Static IP https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways#gateway_ip_addressing
+  #addresses:
+  #- type: NamedAddress
+  #  value: gateway-static-ip
+---
+# Uncomment this to force HTTP to HTTPS redirect https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways#redirect_http_traffic_from_the_gateway_namespace
+#kind: HTTPRoute
+#apiVersion: gateway.networking.k8s.io/v1beta1
+#metadata:
+#  name: http-to-https-redirect
+#  namespace: istio-ingress
+#spec:
+#  parentRefs:
+#  - namespace: istio-ingress
+#    name: asm-gw-lb
+#    sectionName: http
+#  rules:
+#  - filters:
+#    - type: RequestRedirect
+#      requestRedirect:
+#        scheme: https
+#---
+# Use HTTPRoute to forward from GCLB to istio-ingressgateway service
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: asm-gw-route
+  namespace: istio-ingress
+spec:
+  parentRefs:
+  - namespace: istio-ingress
+    name: asm-gw-lb
+    #sectionName: https   # Uncomment if using RequestRedirect filter above
+  hostnames:    # See: kubectl explain httproute.spec.hostnames
+  - "*.example.com"   # Use wildcard, or individual entries. Must cover all external host values used in istio gatway/virtualservice resources
+  rules:    # More examples at https://gateway-api.sigs.k8s.io/api-types/httproute/#backendrefs-optional
+  # http2 testing must use an https backend (https://cloud.google.com/load-balancing/docs/ssl-certificates/encryption-to-the-backends#secure-protocol-considerations)
+  #- matches:
+  #  - headers:
+  #    - name: test
+  #      value: "true"
+  #  backendRefs:
+  #  - name: podinfo
+  #    port: 8080  # This won't work if service appProtocol is set to http2 since GCLB requires tls http2 backend not plaintext http2
+  # default traffic from GCLB forward to istio-ingressgateway via http
+  - backendRefs:
+    - name: ingressgateway
+      port: 80
+---
+# configure healthcheck https://cloud.google.com/kubernetes-engine/docs/how-to/configure-gateway-resources#configure_health_check
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: asm-gw-healthcheck
+  namespace: istio-ingress
+spec:
+  default:
+    checkIntervalSec: 15
+    timeoutSec: 15
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    logConfig:
+      enabled: false
+    config:   # https://cloud.google.com/load-balancing/docs/features#health-checks for which checks are supported
+      type: HTTP # TCP, HTTP, HTTPS, HTTP2
+      # see also: kubectl explain HealthCheckPolicy.spec.default.config
+      httpHealthCheck:
+        host: anywhere.example.com
+        port: 80
+        requestPath: /healthz   # This is the healthcheck path for whereami container. 
+        # For shared ingress gateway could also use envoy status port 15021 requestPath /healthz/ready (see asm-ingressgateway-classic/svc-clusterip.yaml)
+        # Make sure to also create firewall rules https://cloud.google.com/load-balancing/docs/health-checks#fw-rule
+  targetRef:
+    group: ""
+    kind: Service
+    name: ingressgateway
+# Should see changes reflected in console after 5-10 minutes at https://console.cloud.google.com/net-services/loadbalancing/list/loadBalancers
+# Also good to check for any events from gateway controller: kubectl events -n istio-ingress

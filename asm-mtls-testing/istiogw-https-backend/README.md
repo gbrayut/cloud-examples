@@ -39,7 +39,7 @@ echo GET "/" | openssl s_client -servername caddy.example.com -connect $IP:19443
 # -servername controls sni, and caddy doesn't work using IPs as SNI hostname
 
 # Enable envoy debug logs for specific components or all components:
-istioctl proxy-config log caddy-bbd864487-q7vk8.caddy  --level http:debug,client:debug,upstream:debug,filter:debug
+istioctl proxy-config log caddy-bbd864487-q7vk8.caddy  --level http:debug,client:debug,upstream:debug,filter:debug,router:debug
 istioctl proxy-config log caddy-bbd864487-q7vk8.caddy  --level debug
 
 # View caddy or envoy sidecar logs:

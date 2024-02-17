@@ -1,0 +1,113 @@
+# https://istio.io/latest/docs/concepts/traffic-management/
+# https://istio.io/latest/docs/reference/config/networking/gateway/
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: shared-istio-gw
+  namespace: istio-ingress
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: http
+    hosts:
+    - "*.example.com"
+  
+  # https://istio.io/latest/docs/tasks/traffic-management/ingress/secure-ingress/#configure-a-tls-ingress-gateway-for-multiple-hosts
+  - port:
+      number: 443
+      name: https
+      protocol: https
+    tls:
+      mode: SIMPLE
+      credentialName: shared-istio-gw-wildcard-cert
+      # kubectl create -n istio-ingress secret tls shared-istio-gw-wildcard-cert --key=key-star.pem --cert=cert-star.crt
+    hosts:
+    - "*.example.com"
+---
+# https://istio.io/latest/docs/reference/config/networking/virtual-service/
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: anywhere-vs
+  namespace: istio-ingress
+spec:
+  hosts:
+  - "anywhere.example.com"
+  gateways:
+  - shared-istio-gw
+  http:
+  # Use match to forward specific path prefixes
+  - match:
+    - uri:
+        prefix: /app-2
+    rewrite:
+      uri: /    # Remove app-2 prefix when forwarding to backend
+    #corsPolicy:  # This application handles it's own cors headers so envoy can't overide without striping from backend response
+    route:
+    - destination:
+        host: whereami.app-2.svc.cluster.local 
+  # For all other paths, forward to podinfo
+  - route:
+    - destination:
+        host: podinfo.podinfo.svc.cluster.local
+        port:
+          number: 9898
+    # https://istio.io/latest/docs/reference/config/networking/virtual-service/#CorsPolicy
+    corsPolicy:
+      allowOrigins:
+      - exact: https://anywhere.example.com     # exact will not include other prefix (http or subdomain) or suffixes (:8080)
+      #- prefix: https://anywhere.example.com   # not recommended as would also match https://anywhere.example.com.anotherdomain.com
+      - regex: '^https?://(?:[^/]+\.)*example\.(?:com|net|org|edu)(?::[\d]+)?$' # matches any subdomain or apex of example.com/net/org/edu even with port suffix
+      allowMethods:
+      - GET
+      - OPTIONS
+      allowCredentials: false
+      allowHeaders:
+      - X-Requested-With
+      maxAge: "2h"  # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Max-Age
+
+    # https://istio.io/latest/docs/concepts/traffic-management/
+    #fault:
+    #  #abort:
+    #  #  httpStatus: 500
+    #  #  percentage:
+    #  #    value: 50
+    #  delay:
+    #    fixedDelay: 2s
+    #    percent: 50
+    # Default retry is 2, increase to 3 and lower timeout
+    timeout: 1s
+    retries:
+      attempts: 3
+      perTryTimeout: 100ms
+---
+# https://istio.io/latest/docs/ops/best-practices/traffic-management/
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: podinfo-vs
+  namespace: podinfo  # Apps can manage their own hosts in their namespace if desired
+spec:
+  hosts:
+  - "podinfo.example.com"   # Host Header matching
+  gateways:
+  - istio-ingress/shared-istio-gw
+  http:
+  - route:
+    - destination:
+        host: podinfo.podinfo.svc.cluster.local
+        port:
+          number: 80
+    corsPolicy:
+      allowOrigins:
+      - prefix: https://podinfo.example.com
+      allowMethods:
+      - GET
+      allowCredentials: false
+      allowHeaders:
+      - X-Test
+      maxAge: "24h"

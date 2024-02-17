@@ -49,7 +49,7 @@ istioctl proxy-config all whereami-758fc65995-62spk.testing
 # List log levels for pod
 istioctl proxy-config log whereami-758fc65995-62spk.testing
 # Update log levels for pod (cannot be used to configure Envoy Access Logs)
-istioctl proxy-config log whereami-758fc65995-62spk.testing --level http:info,server:debug,client:debug
+istioctl proxy-config log whereami-758fc65995-62spk.testing --level http:info,server:debug,client:debug,router:debug
 
 # Some more useful commands in experimental section (shortcut name x)
 istioctl experimental
