@@ -22,7 +22,8 @@ kubectl apply -f https://raw.githubusercontent.com/gbrayut/cloud-examples/main/a
 kubectl apply -f https://raw.githubusercontent.com/gbrayut/cloud-examples/main/asm-ingressgateway-classic/istio-gw-virtualservice-cors.yaml
 
 # At this point you could do a simple (non-cors) test inside the cluster using:
-kubectl run -it test -n istio-system --image=us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.9 -- /bin/bash
+kubectl run test -n istio-system --image=us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.9
+kubectl exec -it test -n istio-system -- /bin/bash
 curl -H "Host: anywhere.example.com" -v http://ingressgateway.istio-ingress.svc.cluster.local
 # then exit and delete the bare pod: kubectl delete pod -n istio-system test
 
@@ -35,7 +36,8 @@ kubectl apply -f https://raw.githubusercontent.com/gbrayut/cloud-examples/main/a
 
 
 
-
+# Check GCLB status in console at https://console.cloud.google.com/kubernetes/gateways
+# Check GCLB backend health status at https://console.cloud.google.com/net-services/loadbalancing/list/loadBalancers
 # After 5-10 minutes you should be able to test using the GCLB IP Address:
 GCLBIP=$(kubectl get gateway -n istio-ingress asm-gw-lb -o jsonpath="{.status.addresses[0].value}")
 curl -v -H "Host: anywhere.example.com" http://$GCLBIP      # using anywhere-vs in istio-ingress namespace
@@ -71,44 +73,44 @@ alt-svc: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
 
 # The GKE/Gateway resources should look something like this:
 $ kubectl get pods,svc,gtw,httproute -A | grep -vE "kube-system|gke-mcs"
-NAMESPACE       NAME                                                           READY   STATUS    RESTARTS   AGE
-app-2           pod/whereami-7668f75f49-7wn5p                                  2/2     Running   0          7h14m
-istio-ingress   pod/istio-ingressgateway-bd96cb85c-2lgdm                       1/1     Running   0          167m
-istio-ingress   pod/istio-ingressgateway-bd96cb85c-9nqt5                       1/1     Running   0          167m
-istio-ingress   pod/istio-ingressgateway-bd96cb85c-vqckp                       1/1     Running   0          167m
-podinfo         pod/podinfo-85c45f85db-48pdq                                   2/2     Running   0          86m
-podinfo         pod/podinfo-85c45f85db-rrgbv                                   2/2     Running   0          87m
+NAMESPACE       NAME                                                          READY   STATUS    RESTARTS   AGE
+app-2           pod/whereami-8f79b96c5-vfpzx                                  2/2     Running   0          45m
+istio-ingress   pod/istio-ingressgateway-f655c454-kwpjf                       1/1     Running   0          45m
+istio-ingress   pod/istio-ingressgateway-f655c454-lb67z                       1/1     Running   0          45m
+istio-ingress   pod/istio-ingressgateway-f655c454-xcls8                       1/1     Running   0          45m
+podinfo         pod/podinfo-664f9748d8-cb2lm                                  2/2     Running   0          45m
+podinfo         pod/podinfo-664f9748d8-ngm7b                                  2/2     Running   0          45m
 
-NAMESPACE       NAME                           TYPE           CLUSTER-IP      EXTERNAL-IP    PORT(S)                                      AGE
-app-2           service/whereami               ClusterIP      10.64.39.196    <none>         80/TCP                                       7h14m
-istio-ingress   service/ingressgateway         LoadBalancer   10.64.51.240    35.226.91.75   15021:32213/TCP,80:30371/TCP,443:30731/TCP   6h23m
-podinfo         service/podinfo                ClusterIP      10.64.180.70    <none>         9898/TCP,9999/TCP                            87m
+NAMESPACE       NAME                           TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                    AGE
+app-2           service/whereami               ClusterIP   10.64.204.155   <none>        80/TCP                     45m
+default         service/kubernetes             ClusterIP   10.64.0.1       <none>        443/TCP                    68m
+istio-ingress   service/ingressgateway         ClusterIP   10.64.102.198   <none>        15021/TCP,80/TCP,443/TCP   45m
+podinfo         service/podinfo                ClusterIP   10.64.123.74    <none>        9898/TCP,9999/TCP          45m
 
-NAMESPACE       NAME                                          CLASS                            ADDRESS         PROGRAMMED   AGE
-istio-ingress   gateway.gateway.networking.k8s.io/asm-gw-lb   gke-l7-global-external-managed   34.128.145.21   True         6h43m
+NAMESPACE       NAME                                          CLASS                            ADDRESS        PROGRAMMED   AGE
+istio-ingress   gateway.gateway.networking.k8s.io/asm-gw-lb   gke-l7-global-external-managed   34.149.70.30   True         40m
 
 NAMESPACE       NAME                                               HOSTNAMES           AGE
-istio-ingress   httproute.gateway.networking.k8s.io/asm-gw-route   ["*.example.com"]   6h43m
-
+istio-ingress   httproute.gateway.networking.k8s.io/asm-gw-route   ["*.example.com"]   40m
 
 # The Istio Gateway/VirtualService resources should look something like this:
 $ kubectl get gw,virtualservice -n istio-ingress
 NAME                                          AGE
-gateway.networking.istio.io/shared-istio-gw   6h28m
+gateway.networking.istio.io/shared-istio-gw   5m23s
 
 NAME                                             GATEWAYS              HOSTS                      AGE
-virtualservice.networking.istio.io/anywhere-vs   ["shared-istio-gw"]   ["anywhere.example.com"]   6h28m
+virtualservice.networking.istio.io/anywhere-vs   ["shared-istio-gw"]   ["anywhere.example.com"]   5m23s
 
 
 
-
+# TODO: fix end-to-end http2 testing. appProtocol http2 requires tls backend, podinfo uses plaintext http2
 # For end-to-end http2 testing it is best to use a simple test server like https://github.com/stefanprodan/podinfo
 # This will create a "bare-pod" deployment with istio sidecar injection using istio-ingress namespace
 kubectl run podinfo -n istio-ingress --image=stefanprodan/podinfo \
   --port 8080 --expose -- ./podinfo --h2c --level debug --port 8080
-# Change service port to use appProtocol http2 so service mesh knows its an http2 backend
+# Change service port to use appProtocol http2 so service mesh knows its an http2 backend (requires tls listener inside pod)
 kubectl patch svc -n istio-ingress podinfo -p '{"spec":{"ports":[{"port": 8080, "appProtocol": "http2"}]}}' --type=merge
-# Tail logs on bare pod and send requests thru GCLB using test header (must enable section in istio-gw-virtualservice.yaml first)
+# Tail logs on bare pod and send requests thru GCLB using test header (must enable http2 testing section in asm-l7-global-external.yaml first)
 kubectl logs -n istio-ingress podinfo -f
 curl $ARGS --resolve anywhere.example.com:443:$GCLBIP -H "test: true" https://anywhere.example.com/headers
 # cleanup bare pod when finished

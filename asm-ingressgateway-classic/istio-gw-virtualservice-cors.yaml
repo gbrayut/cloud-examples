@@ -101,12 +101,14 @@ spec:
     - destination:
         host: podinfo.podinfo.svc.cluster.local
         port:
-          number: 80
+          number: 9898
     corsPolicy:
       allowOrigins:
-      - prefix: https://podinfo.example.com
+      - exact: http://podinfo.example.com
+      - exact: https://podinfo.example.com
       allowMethods:
       - GET
+      - OPTIONS
       allowCredentials: false
       allowHeaders:
       - X-Test
