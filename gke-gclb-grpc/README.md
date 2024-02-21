@@ -2,7 +2,7 @@
 
 TODO: Add descriptions and comparisons for each LB type (NLB, Ingress, Gateway API Classic and Managed)
 
-## Deploy and verify gRPC service using NLB
+## Option 0: Deploy and verify gRPC service using NLB
 
 ```shell
 kubectl apply -f https://github.com/gbrayut/cloud-examples/raw/main/gke-gclb-grpc/grpcbin-deploy-nlb.yaml
@@ -46,7 +46,20 @@ kubectl logs -n istio-ingress deploy/istio-ingressgateway -c istio-proxy -f
 kubectl logs -n grpcbin deploy/grpcbin -c istio-proxy -f
 ```
 
-## Option 2: Using Service Mesh Cloud Gateway (asm-l7-gxlb composite gateway)
+## Option 2: GKE Ingress Controller
+NOTE: GKE Ingress Controller is feature frozen. Gateway API is now recommended approach.
+
+TODO: add details. See [grpcbin-example-ingress.yaml](./grpcbin-example-ingress.yaml)
+
+## Option 3: GKE Gateway Classic ALB gke-l7-gxlb
+
+TODO: add details. See [grpcbin-gatewayapi-classic.yaml](./grpcbin-gatewayapi-classic.yaml)
+
+## Option 4: GKE Gateway Managed ALB gke-l7-global-external-managed  
+
+TODO: add details. See [grpcbin-gatewayapi-managed.yaml](./grpcbin-gatewayapi-managed.yaml)
+
+## Option 5: Using Service Mesh Cloud Gateway (asm-l7-gxlb composite gateway)
 NOTE: Good for quick testing, but still stuck in preview with no ETA for GA
 
 [asm-l7-gxlb](https://cloud.google.com/service-mesh/docs/managed/service-mesh-cloud-gateway)

@@ -9,7 +9,7 @@ metadata:
     # Assign certs via Certificate Manager https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-certificate-manager
     networking.gke.io/certmap: gke-gateway-map
 spec:
-  gatewayClassName: gke-l7-global-external-managed  # Based on Envoy, and currently still in Public Preview
+  gatewayClassName: gke-l7-global-external-managed  # Based on Envoy
   listeners:
   - name: https
     protocol: HTTPS
