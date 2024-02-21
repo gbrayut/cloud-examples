@@ -56,7 +56,7 @@ spec:
     route:
     - destination:
         host: grpcbin.grpcbin.svc.cluster.local
-        port: 
+        port:
           number: 8080
   # optional: grpcurl first does a reflection call. Routing those to non-tls 9000 makes testing a bit easier
   - match:
@@ -65,7 +65,7 @@ spec:
     route:
     - destination:
         host: grpcbin.grpcbin.svc.cluster.local
-        port: 
+        port:
           number: 9000
   # For all other paths, forward to grpc backend
   # trying to use the tls backend here would fail with: unexpected HTTP status code received from server: 400 (Bad Request); malformed header: missing HTTP content-type

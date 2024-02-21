@@ -30,6 +30,8 @@ Following the [GKE multi-cluster mesh](https://cloud.google.com/service-mesh/doc
     # Wait for "code: REVISION_READY details: 'Ready: asm-managed'" on all clusters
     gcloud container fleet mesh describe
 
+    # TODO: Check before setting... default for fleet api is already connected. Just need firewall rules? what errors occur if not?
+
     # Then on all clusters enable endpoint discovery using the asm-options configmap
     # or use "manual" later if you want to disable it and remove the istio-remote secrets
     kubectl patch configmap/asm-options -n istio-system --type merge -p '{"data":{"multicluster_mode":"connected"}}'

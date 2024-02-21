@@ -1,0 +1,147 @@
+# see https://cloud.google.com/service-mesh/docs/managed/service-mesh-cloud-gateway
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: GatewayClass
+metadata:
+  name: asm-l7-gxlb
+spec:
+  controllerName: mesh.cloud.google.com/gateway
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    istio.io/rev: default
+  name: istio-ingress
+---
+kind: Gateway
+apiVersion: gateway.networking.k8s.io/v1beta1
+metadata:
+  name: shared-asm-cloud-gw
+  namespace: istio-ingress
+  annotations:
+    # Assign certs via Certificate Manager https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-certificate-manager
+    networking.gke.io/certmap: gke-gateway-map
+spec:
+  gatewayClassName: asm-l7-gxlb # Composite gateway (currently in preview) creates an gke-l7-gxlb and istio resource 
+  listeners:
+  - name: https
+    protocol: HTTPS
+    hostname: "*.example.com"
+    port: 443       # Must use 80, 8080, or 443 https://cloud.google.com/kubernetes-engine/docs/how-to/gatewayclass-capabilities#:~:text=global%20external%20address-,spec.listeners,-gke%2Dl7%2Dglobal
+    allowedRoutes:
+      namespaces:
+        from: All
+    tls:
+      mode: Terminate   # Must terminate, Passthrough only supported on a few GCLB classes and no current Gateway classes
+      options:
+        networking.gke.io/pre-shared-certs: "star-example-com"  # https://cloud.google.com/kubernetes-engine/docs/how-to/ingress-multi-ssl#specifying_certificates_for_your_ingress
+  #- name: tls-passthru
+  #  hostname: grpc-tls.example.com    
+  #  protocol: TLS
+  #  port: 443
+  #  allowedRoutes:
+  #    namespaces:
+  #      from: All
+  #  tls:
+  #    mode: Passthrough  # Currently Error GWCER105: Listener "https" is invalid, err: invalid TLS mode type "Passthrough".
+
+  #addresses:
+  #- type: NamedAddress
+  #  value: grpc-static-ip
+---
+# Still have to use HTTPRoute, but in the future may have access to GRPCRoute and TLSRoute https://gateway-api.sigs.k8s.io/guides/grpc-routing/
+# To see available CRDs use: kubectl api-resources --api-group gateway.networking.k8s.io
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: grpcbin-route-cloud-gw
+  namespace: grpcbin
+spec:
+  parentRefs:
+  - name: shared-asm-cloud-gw
+    namespace: istio-ingress
+  hostnames:
+  - grpc.example.com
+  - grpc-9001.example.com
+  rules:    # More examples at https://gateway-api.sigs.k8s.io/api-types/httproute/#backendrefs-optional
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /metrics
+    backendRefs:
+    - name: grpcbin
+      port: 8080
+  - matches:
+    - headers:
+      - type: Exact
+        name: Host
+        value: grpc-9001.example.com
+    backendRefs:
+    - name: grpcbin
+      port: 9001  # grpc+TLS unexpected HTTP status code received from server: 400 (Bad Request); malformed header: missing HTTP content-type
+  - matches:
+    - path:
+        value: /
+    backendRefs:
+    - name: grpcbin
+      port: 9000  # Plaintext grpc error server closed the stream without sending trailers
+#---
+# None of the GKE Gateway Classes support passthru yet, but when they do a TLSRoute something like this might work
+#apiVersion: gateway.networking.k8s.io/v1beta1
+#kind: HTTPRoute
+#metadata:
+#  name: grpcbin-passthru-route-cloud-gw
+#  namespace: grpcbin
+#spec:
+#  parentRefs:
+#  - name: shared-asm-cloud-gw
+#    namespace: istio-ingress
+#  hostnames:
+#  - grpc-tls.example.com
+#  rules:
+#  - matches:
+#    - path:
+#        value: /
+#    backendRefs:
+#    - name: grpcbin
+#      port: 9001
+#---
+#apiVersion: networking.istio.io/v1beta1
+#kind: DestinationRule
+#metadata:
+#  name: grpcbin-ingress-dr
+#  namespace: grpcbin
+#spec:
+#  host: grpc-2.example.com
+#  trafficPolicy:
+#    loadBalancer:
+#      simple: ROUND_ROBIN
+#    connectionPool:
+#      http:
+#        h2UpgradePolicy: UPGRADE
+#        #useClientProtocol: true
+#    #portLevelSettings:
+#    #- port:
+#    #    number: 9001
+#    #  tls:
+#    #    mode: DISABLE # SIMPLE
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: grpcbin-dr
+  namespace: grpcbin
+spec:
+  host: grpcbin.grpcbin.svc.cluster.local
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+    #connectionPool:
+    #  http:
+    #    #h2UpgradePolicy: UPGRADE
+    #    useClientProtocol: true
+    #portLevelSettings:
+    #- port:
+    #    number: 9001
+    #  tls:
+    #    mode: DISABLE # SIMPLE
