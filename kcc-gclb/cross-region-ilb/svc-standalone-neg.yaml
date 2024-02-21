@@ -1,0 +1,17 @@
+# From https://cloud.google.com/kubernetes-engine/docs/how-to/standalone-neg
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "whereami"
+  namespace: app-1
+  annotations:
+    cloud.google.com/neg: '{"exposed_ports": {"80":{"name": "app-1-iowa"}}}'
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+    appProtocol: http
+    name: http
+  selector:
+    app: "whereami"
+  type: "ClusterIP"

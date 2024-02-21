@@ -1,0 +1,125 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    istio.io/rev: default
+  name: grpcecho
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo
+  namespace: grpcecho
+spec:
+  selector:
+    matchLabels:
+      app: echo
+  template:
+    metadata:
+      annotations:
+        traffic.sidecar.istio.io/excludeInboundPorts: "7070"
+      labels:
+        app: echo
+    spec:
+      containers:
+      - name: echo
+        image: gcr.io/istio-testing/app:latest
+        imagePullPolicy: IfNotPresent
+        args:
+        - --tcp=9090
+        - --tcp=9091
+        - --server-first=9091
+        - --port=80
+        - --grpc=7070
+        - --port=443
+        - --tls=443
+        - --tls=7070
+        - --crt=/cert.crt
+        - --key=/cert.key
+        env:
+        - name: INSTANCE_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        ports:
+          - containerPort: 7070
+            protocol: TCP
+          - containerPort: 9090
+            protocol: TCP
+          - containerPort: 9091
+            protocol: TCP
+          - containerPort: 443
+            protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: echo
+  namespace: grpcecho
+spec:
+  selector:
+    app: echo
+  ports:
+  - name: http
+    port: 80
+  - name: https
+    port: 443
+  - name: tcp
+    port: 9090
+  - name: tcp-sf
+    port: 9091
+  - name: grpc
+    port: 7070
+    appProtocol: HTTP2
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: grpcecho-ingress
+  namespace: grpcecho
+spec:
+  hosts:
+    - grpcecho.example.com
+  gateways:
+    - istio-ingress/shared-istio-gw
+  http:
+  - route:
+    - destination:
+        host: echo.grpcecho.svc.cluster.local
+        port:
+          number: 7070
+    timeout: 1s
+    retries:
+      attempts: 3
+      perTryTimeout: 100ms
+    headers:
+      request:
+        add:
+          "X-TESTING": "this-is-a-test"   # make it easier to find requests in envoy logs that match this section
+  tls:
+  - match:
+    - port: 8443
+      sniHosts:
+      - grpcecho.example.com
+    route:
+    - destination:
+        host: echo.grpcecho.svc.cluster.local
+        port:
+          number: 7070 # grpc tls port should work
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: grpcecho-dr
+  namespace: grpcecho
+spec:
+  host: echo.grpcecho.svc.cluster.local
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+    portLevelSettings:
+    - port:
+        number: 7070
+      tls:
+        #mode: DISABLE # mtls should be disabled for excludeInboundPorts ports
+        mode: ISTIO_MUTUAL #

@@ -1,0 +1,57 @@
+# Create a separate kubernetes service so there is a DNS record
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: whereami-weighted
+  namespace: default # istio-ingress
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+---
+# https://istio.io/latest/docs/reference/config/networking/virtual-service/
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: whereami-weighted
+spec:
+  hosts:
+    - whereami-weighted.default.svc.cluster.local
+  gateways:
+    - mesh
+  http:
+  # Use match to forward specific path prefixes
+  - match:
+    - uri:
+        prefix: /app-1
+    route:
+    - destination:
+        host: whereami.app-1.svc.cluster.local
+  - match:
+    - uri:
+        prefix: /app-2
+    route:
+    - destination:
+        host: whereami.app-2.svc.cluster.local
+  # For all other paths, forward to app-1 or failover to app-2
+  - route:
+    - destination:
+        host: whereami-combined.app-1
+        port:
+          number: 8080
+    timeout: 1s
+    retries:
+      attempts: 3
+      perTryTimeout: 100ms
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: whereami-weighted
+spec:
+  host: whereami-weighted
+  trafficPolicy:
+    outlierDetection:
+      consecutive5xxErrors: 1
+      interval: 15s
+      baseEjectionTime: 1m
