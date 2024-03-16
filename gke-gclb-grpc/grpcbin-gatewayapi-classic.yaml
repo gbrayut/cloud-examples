@@ -67,17 +67,21 @@ spec:
     timeoutSec: 15
     healthyThreshold: 1
     unhealthyThreshold: 2
-    logConfig:
-      enabled: false
+    logConfig:  # Find in Log Explorer using logName="projects/gregbray-vpc/logs/compute.googleapis.com%2Fhealthchecks" jsonPayload.healthCheckProbeResult.healthCheckProtocol="GRPC"
+      enabled: False  # Usually only need to enable during initial troubleshooting
     config:   # https://cloud.google.com/load-balancing/docs/features#health-checks for which checks are supported
-      type: GRPC # or HTTP, TCP, HTTP, HTTPS, HTTP2
-      # see also: kubectl explain HealthCheckPolicy.spec.default.config
-      httpHealthCheck:    # Inactive (only the selected type is used)
-        port: 8080
-        requestPath: /metric/healthz          # not a real path but should work in this case
-      grpcHealthCheck:    # See https://cloud.google.com/load-balancing/docs/health-checks#optional-flags-hc-protocol-grpc
-        grpcServiceName: "whereami.Whereami"  # Omit to just run grpc.health.v1.Health server check, otherwise specifies which service status to explicity check
-        port: 9090
+      type: GRPC # or TCP, HTTP, HTTPS, HTTP2 (Gateway API doesn't support just SSL)
+      # see also: kubectl explain HealthCheckPolicy.spec.default.config and https://cloud.google.com/compute/docs/reference/rest/v1/healthChecks
+      #tcpHealthCheck:
+      #  port: 9001
+      #httpHealthCheck:
+      #  port: 8080
+      #  requestPath: /metric/healthz          # not a real path but should work in this case
+      #grpcHealthCheck:    # See https://cloud.google.com/load-balancing/docs/health-checks#optional-flags-hc-protocol-grpc
+      #  grpcServiceName: "whereami.Whereami"  # When calling grpc.health.v1.Health/Check this optional value is passed as the service for validating specific service is healthy
+      #  port: 9090 # Must use grpc-plaintext with grpc.health.v1.Health service. Does not currently support TLS (see b/173762479)
+      # if the grpc server does not implement grpc.health.v1.Health it will pass health check with probeResultText: "The backend has no health checking service. Treated as healthy."
+      # If trying to use a TLS port it will fail health check probeResultText: gRPC status: UNAVAILABLE (failed to connect to all addresses; last error: UNAVAILABLE: ipv6:%5Bfda3:e722:ac3:cc00:72:5db7:a78:120%5D:9001: Socket closed)
   targetRef:
     group: ""
     kind: Service
@@ -88,3 +92,5 @@ spec:
 # testing: (Must use -authority that matches CN/SAN entry on cert for certmap/SNI matching)
 # grpcurl -vv -insecure -authority grpc.example.com 34.120.53.24:443 hello.HelloService.SayHello
 # curl -v --cacert /tmp/cert/_.example.com.crt --resolve grpc.example.com:443:34.120.53.24 https://grpc.example.com/metrics
+
+#TODO: does http2HealthCheck work with TLS backends? or only h2c plaintext?

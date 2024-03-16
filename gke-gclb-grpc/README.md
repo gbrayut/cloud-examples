@@ -10,8 +10,10 @@ kubectl apply -f https://github.com/gbrayut/cloud-examples/raw/main/gke-gclb-grp
 # Verify everything working directly using NLB from service resource
 NLB_GRPCBIN=$(kubectl get svc grpcbin -n grpcbin | grep -v EXTERNAL-IP | awk '{ print $4}')
 curl -v http://$NLB_GRPCBIN:8080/metrics
-grpcurl -plaintext $NLB_GRPCBIN:9090 whereami.Whereami.GetPayload
-grpcurl -vv -insecure  $NLB_GRPCBIN:9001 hello.HelloService.SayHello
+grpcurl -plaintext $NLB_GRPCBIN:9090 whereami.Whereami/GetPayload
+grpcurl -plaintext -d '{"service":"whereami.Whereami"}' $NLB_GRPCBIN:9090 grpc.health.v1.Health/Check
+grpcurl -vv -plaintext -d '{"greeting":"testing"}' $NLB_GRPCBIN:9000 hello.HelloService/SayHello
+grpcurl -vv -insecure -d '{"greeting":"testing"}' $NLB_GRPCBIN:9001 hello.HelloService/SayHello
 ```
 
 ## Option 1: Using Istio CRDs for ASM Ingress Gateway
@@ -54,6 +56,17 @@ TODO: add details. See [grpcbin-example-ingress.yaml](./grpcbin-example-ingress.
 ## Option 3: GKE Gateway Classic ALB gke-l7-gxlb
 
 TODO: add details. See [grpcbin-gatewayapi-classic.yaml](./grpcbin-gatewayapi-classic.yaml)
+
+```shell
+kubectl apply -f https://github.com/gbrayut/cloud-examples/raw/main/gke-gclb-grpc/grpcbin-gatewayapi-classic.yaml
+
+# Verify everything working directly using NLB from service resource
+ALB_GRPCBIN=$(kubectl get gtw grpcbin-lb -n grpcbin -o=jsonpath='{.status.addresses[0].value}')
+# show prometheus metrics from grpcbin port 8080 via grpcbin-route match rule
+curl -vk --resolve grpc.example.com:443:$ALB_GRPCBIN https://grpc.example.com:443/metrics
+# validate gRPC to backend works (check https://console.cloud.google.com/net-services/loadbalancing/list/loadBalancers or cloud logging for any errors)
+grpcurl -vv -insecure -authority grpc.example.com $ALB_GRPCBIN:443 hello.HelloService.SayHello
+```
 
 ## Option 4: GKE Gateway Managed ALB gke-l7-global-external-managed  
 
@@ -107,4 +120,15 @@ grpcurl -vv -insecure -authority grpc.example.com $NLB_ISTIOGW:8443 hello.HelloS
 istioctl proxy-config log istio-ingressgateway-78d5d78c6-d5ws8.istio-ingress --level debug
 kubectl logs -n istio-ingress deploy/istio-ingressgateway -c istio-proxy -f
 kubectl logs -n grpcbin deploy/grpcbin -c istio-proxy -f
+```
+
+# Misc notes or references
+
+* https://github.com/grpc/grpc/blob/master/doc/health-checking.md
+* https://chromium.googlesource.com/external/github.com/grpc/grpc/+/HEAD/doc/PROTOCOL-HTTP2.md
+* https://protobuf.dev/programming-guides/encoding/
+
+```
+# This doesn't work... wireshark seems to think there is an issue with body or header frames in HTTP2
+printf '\x0a\x07test123' | curl -kv --http2-prior-knowledge -X POST --data-binary @- -H "Content-Type:application/grpc" http://$NLB_GRPCBIN:9000/hello.HelloService/SayHello
 ```
