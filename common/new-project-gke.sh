@@ -103,3 +103,27 @@ kubectl exec -it -n app-1 test-1 -- curl -sm 2 http://test-2.app-2.svc.cluster.l
 # cleanup single pod or both namespaces
 kubectl delete pod -n app-2 test-2
 kubectl delete ns app-1 app-2
+
+
+# Make sure the service account used by each node pool has reader permission on the Artifact Registry project or a specific repo
+gcloud config set accessibility/screen_reader false   # This fixes table output by disabling screen reader
+# List service accounts used by each node pool in a cluster (first shows default compute service account, second using a specific GSA)
+gcloud container clusters describe my-gke-cluster --region us-central1 --project my-gke-project \
+  --format="multi(nodePools:format='table[all-box](name,config.serviceAccount)')"
+
+┌──────────────┬────────────────────────────────────────────────────────────┐
+│     NAME     │                      SERVICE_ACCOUNT                       │
+├──────────────┼────────────────────────────────────────────────────────────┤
+│ default-pool │ 601234567890-compute@developer.gserviceaccount.com         │
+├──────────────┼────────────────────────────────────────────────────────────┤
+│ node-pool-01 │ gke-pool-01@my-gke-project.iam.gserviceaccount.com         │
+└──────────────┴────────────────────────────────────────────────────────────┘
+
+# Grant default compute GSA access to all repos in a project https://cloud.google.com/artifact-registry/docs/access-control#grant
+gcloud projects add-iam-policy-binding my-artifact-project \
+   --member="serviceAccount:$PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+   --role="roles/artifactregistry.reader"
+# Or grant access on specific repo to a specific node's service account
+gcloud artifacts repositories add-iam-policy-binding my-artifact-repo --location=us-central1 \
+   --member="serviceAccount:gke-pool-01@my-gke-project.iam.gserviceaccount.com" \
+   --role="roles/artifactregistry.reader"
