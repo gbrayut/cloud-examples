@@ -46,8 +46,9 @@ Following the [GKE multi-cluster mesh](https://cloud.google.com/service-mesh/doc
 If desired mesh operators can update the `istio-system/istio-asm-managed` (or equivalent) configmap to exclude any services that should [remain local to the cluster](https://istio.io/latest/docs/ops/configuration/traffic-management/multicluster/):
 
   * the mesh configmap only changes the local cluster and ideally the same settings should be applied directly to all clusters in the fleet
+  * using the global `serviceSettings->settings->clusterLocal: True` will disable cross-cluster endpoints for all services and cannot be overrided by per-service settings
+  * clusterLocal only allows disabling cross-cluster endpoints (setting `clusterLocal: false` has no effect and those entries will be ignored)
   * serviceSettings [clusterLocal](https://istio.io/latest/docs/reference/config/istio.mesh.v1alpha1/#MeshConfig-ServiceSettings-Settings) changes how endpoints for the services IN that namespace are handled for all sidecars/gateways in the mesh
-  * it only allows disabling cross-cluster endpoints (setting `clusterLocal: false` has no effect and those entries will be ignored)
   * you can set the default [localityLbSetting](https://istio.io/latest/docs/reference/config/istio.mesh.v1alpha1/#MeshConfig-ServiceSettings-Settings:~:text=No-,localityLbSetting,-LocalityLoadBalancerSetting) including failoverPriority values in the MeshConfig
     * but you currently cannot globally enable the outlierDetection dependency (only by using destination rules)
   * this essentially means mesh operators can configure per service/namespace **opt-out** of cross-cluster routing, but there is no mechanism to override MeshConfig clusterLocal settings or **opt-in** specific services/namespaces for cross-cluster routing
@@ -176,7 +177,9 @@ The [gw-vs-dr.yaml](./gw-vs-dr.yaml) example shows how you can configure multi-c
 * [locality loadbalancing](https://istio.io/latest/docs/tasks/traffic-management/locality-load-balancing/failover/) with [failoverPriority](https://istio.io/latest/docs/reference/config/networking/destination-rule/#LocalityLoadBalancerSetting) in the [destination rule](./gw-vs-dr.yaml#L77-L89). This is the only option that does active-passive failover between cross-cluster endpoints.
 * [prefix matches](./gw-vs-dr.yaml#L28-L55) on the virtual service used by istio-ingress gateway. These will only work for requests from outside the cluster, but a similar virtual service could be created for `host: name.namespace.svc.cluster.local`. Note that unless there is a destination rule with locality/failover routing, you may see `no healthy upstream` when the selected subset has no healthy endpoints.
 * named [subsets](./gw-vs-dr.yaml#L94-L102) in the destination rule for explicit routing (note these do not support automatic failover outside the subset)
-  * this uses a special [label](https://istio.io/latest/docs/reference/config/labels/) to match the GKE clusterID like `topology.istio.io/cluster: cn-gregbray-vpc-us-west1-gke-oregon`
+  * this uses a special [label](https://istio.io/latest/docs/reference/config/labels/) to match the GKE clusterID:
+    * `topology.istio.io/cluster: cn-gregbray-vpc-us-west1-gke-oregon`
+    * Format is `cn-[project-name]-[region]-[gke-cluster-name]`
   * those values can also be use as [source label matching](https://istio.io/latest/docs/ops/configuration/traffic-management/multicluster/#partitioning-services) in virtual services
 ```shell
 # Simulate a client outside the cluster but in the same region using the test pod from above
