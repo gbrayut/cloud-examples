@@ -1,0 +1,49 @@
+# example https://cloud.google.com/kubernetes-engine/docs/concepts/ingress#multiple_backend_services
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: my-ingress
+spec:
+  defaultBackend:
+    service:
+      name: default-http-backend
+      port:
+        number: 60001
+  rules:
+  - http:
+      paths:
+      - path: /*
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: my-products
+            port:
+              number: 60000
+      - path: /discounted
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: my-discounted-products
+            port:
+              number: 80
+
+
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: whereami-ingress
+  #namespace: whereami-grpc
+  annotations:  # See https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balance-ingress#ingress_annotations
+    #kubernetes.io/ingress.global-static-ip-name: "grpc-static-ip"   # Technically optional but helps prevent new ephemeral IPs being used when things change
+    kubernetes.io/ingress.allow-http: "false"                   # Optional, but gRPC must use TLS end-to-end, frontend and backend (I think it uses ALPN to upgrade connections from HTTP/1.1 to HTTP/2)
+    ingress.gcp.kubernetes.io/pre-shared-cert: "test-ingress"   # see https://cloud.google.com/kubernetes-engine/docs/how-to/ingress-multi-ssl#pre-shared-certs 
+spec:
+  defaultBackend:
+    service:
+      name: whereami-grpc-ingress
+      port:          # must use TLS to backend for HTTP/2 per https://cloud.google.com/load-balancing/docs/ssl-certificates/encryption-to-the-backends#secure-protocol-considerations
+        number: 9001 # othwerise get error: unexpected HTTP status code received from server: 502 (Bad Gateway); transport: received unexpected content-type "text/html; charset=UTF-8" or just EOF errors (when ingress.allow-http is enabled)
+# Testing: (I think authority is optional, unless you have multiple certs on GCLB and need SNI)
+# Also note that GCLB created via ingress controller only binds to port 443
+# grpcurl -vv -insecure -authority test.example.com 34.120.53.24:443 hello.HelloService.SayHello

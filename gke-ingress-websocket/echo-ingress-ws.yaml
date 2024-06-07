@@ -1,0 +1,148 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: echo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo8080
+  namespace: echo
+  labels:
+    app: echo8080
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: echo8080
+  template:
+    metadata:
+      labels:
+        app: echo8080
+    spec:
+      containers:
+      # https://github.com/InAnimaTe/echo-server
+      - name: whereami
+        image: docker.io/inanimate/echo-server
+
+        ports:
+        - containerPort: 8080
+---
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "echo8080"
+  namespace: echo
+  #annotations:
+    # https://cloud.google.com/kubernetes-engine/docs/concepts/ingress-xlb#https_tls_between_load_balancer_and_your_application
+    # cloud.google.com/app-protocols: '{"my-https-port":"HTTPS","my-http-port":"HTTP"}'
+    # cloud.google.com/neg: '{"ingress": true}'
+    # https://cloud.google.com/kubernetes-engine/docs/how-to/ingress-configuration#associating_backendconfig_with_your_ingress
+spec:
+  ports:
+  - port: 8080
+    targetPort: 8080
+    appProtocol: http
+    name: http
+  selector:
+    app: "echo8080"
+  type: "ClusterIP"
+---
+# second instance on a different port
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo9090
+  namespace: echo
+  labels:
+    app: echo9090
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: echo9090
+  template:
+    metadata:
+      labels:
+        app: echo9090
+    spec:
+      containers:
+      - name: whereami
+        image: docker.io/inanimate/echo-server
+        env:
+        - name: PORT
+          value: "9090"
+        ports:
+        - containerPort: 9090
+---
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "echo9090"
+  namespace: echo
+  annotations:
+    cloud.google.com/backend-config: '{"default": "echo9090-backendconfig"}' # https://cloud.google.com/kubernetes-engine/docs/how-to/ingress-configuration#associating_backendconfig_with_your_ingress
+spec:
+  ports:
+  - port: 9090
+    targetPort: 9090
+    appProtocol: http
+    name: http
+  selector:
+    app: "echo9090"
+  type: "ClusterIP"
+---
+# Example ingress resource for path based routing and ws testing https://cloud.google.com/kubernetes-engine/docs/how-to/ingress-configuration#feature_comparison
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: echo-ingress
+  namespace: echo
+  # https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balance-ingress#ingress_annotations
+  annotations:
+    # ingress.gcp.kubernetes.io/pre-shared-cert: "CERT_NAME"
+    # kubernetes.io/ingress.global-static-ip-name: my-static-address
+    # kubernetes.io/ingress.allow-http: "false"
+    # kubernetes.io/ingress.regional-static-ip-name: STATIC_IP_NAME
+    # kubernetes.io/ingress.class: "gce-internal"   # or "gce" for external (default)
+    # networking.gke.io/v1beta1.FrontendConfig: "..."
+spec:
+  defaultBackend:
+    service:
+      name: echo9090
+      port:
+        number: 9090
+  rules:
+  - http:
+      paths:
+      - path: /8080/*
+        pathType: ImplementationSpecific  # These are exact matches
+        backend:
+          service:
+            name: echo8080
+            port:
+              number: 8080
+      - path: /9090                       # Prefix includes 
+        pathType: Prefix
+        backend:
+          service:
+            name: echo9090
+            port:
+              number: 9090
+      - path: /ws
+        pathType: Prefix
+        backend:
+          service:
+            name: echo9090
+            port:
+              number: 9090
+---
+# 
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: echo9090-backendconfig
+  namespace: echo
+spec:
+  # https://cloud.google.com/kubernetes-engine/docs/concepts/ingress-xlb#support_for_websocket
+  timeoutSec: 600
