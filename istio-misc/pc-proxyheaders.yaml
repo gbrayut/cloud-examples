@@ -1,0 +1,61 @@
+# From https://istio.io/latest/docs/reference/config/istio.mesh.v1alpha1/#ProxyConfig
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whereami
+  namespace: app-1
+  labels:
+    app: whereami
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: whereami
+  template:
+    metadata:
+      labels:
+        app: whereami
+      annotations:
+        # Change or disable server response header https://istio.io/latest/docs/reference/config/istio.mesh.v1alpha1/#ProxyConfig-ProxyHeaders
+        proxy.istio.io/config: |
+          proxyHeaders:
+            server:
+              disabled: true      # Prevent local sidecar proxy from setting server: envoy. Note: other mesh services may still include server: istio-envoy if not configured to disable server header
+              value: "my-custom-server"   # when server header enabled, this will overide local sidecar value for all responses (in mesh or outside clients as well)
+    spec:
+      containers:
+      # https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/whereami
+      - name: whereami
+        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.19
+        ports:
+        - containerPort: 8080
+        env:
+        - name: NODE_NAME #The node name the pod is running on
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_NAMESPACE #The kubernetes Namespace where the Pod is running
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP #The IP address of the pod
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: ECHO_HEADERS
+          value: "True"
+---
+# Another option is using meshConfig to change the default for all mesh services
+#kubectl get cm -n istio-system
+#kubectl edit cm -n istio-system istio-asm-managed
+# It should look something like this to disable the server header, but also requires restarting existing services using something like kubectl rollout restart deploy/whereami -n app-1
+#apiVersion: v1
+#data:
+#  mesh: |2-
+#    # Not all values supported by ASM or CSM https://cloud.google.com/service-mesh/docs/supported-features-managed#meshconfig
+#    # This section can be updated with user configuration settings from https://istio.io/latest/docs/reference/config/istio.mesh.v1alpha1/
+#    # Some options required for ASM to not be modified will be ignored
+#    defaultConfig:
+#      proxyHeaders:
+#        server:
+#          disabled: true
