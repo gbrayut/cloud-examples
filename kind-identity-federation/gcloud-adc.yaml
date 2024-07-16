@@ -1,0 +1,71 @@
+# See https://cloud.google.com/anthos/fleet-management/docs/use-workload-identity?hl=en#impersonate_a_service_account
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: testing
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gcloud-ksa
+  namespace: testing
+automountServiceAccountToken: false # set this to false when using projected volume for token
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  namespace: testing
+  name: my-cloudsdk-config
+data:
+  # download from console https://cloud.google.com/iam/docs/workload-identity-federation-with-other-providers#download-cred-config
+  # or generate using https://cloud.google.com/sdk/gcloud/reference/iam/workload-identity-pools/create-cred-config
+  config: |
+    {
+      "type": "external_account",
+      "audience": "//iam.googleapis.com/projects/388410766669/locations/global/workloadIdentityPools/demo/providers/demo-oidc-provider",
+      "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+      "token_url": "https://sts.googleapis.com/v1/token",
+      "credential_source": {
+        "file": "/var/run/secrets/tokens/k3d-ksa/token"
+      }
+    }
+# add this to impersonate a google service account "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/test-sa@gregbray-vpc.iam.gserviceaccount.com:generateAccessToken",
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gcloud-bare-pod
+  namespace: testing
+spec:
+  terminationGracePeriodSeconds: 0
+  serviceAccountName: gcloud-ksa
+  containers:
+  - image: gcr.io/google.com/cloudsdktool/google-cloud-cli:latest # Very large image but has most developer tools installed
+    #image: google/cloud-sdk:slim     # :slim or :latest are much smaller but missing python/etc
+    name: gcloud
+    command: ["sleep","infinity"]
+    env:
+      # configure ADC environment variable
+      - name: GOOGLE_APPLICATION_CREDENTIALS
+        value: /var/run/secrets/tokens/k3d-ksa/google-application-credentials.json
+    volumeMounts:
+    # mount projected token
+    - name: ksa
+      mountPath: /var/run/secrets/tokens/k3d-ksa
+      readOnly: true
+  volumes:
+  # configure config volume and projected ksa token with audience that matches allowed value in workload identity federation pool
+  - name: ksa
+    projected:
+      defaultMode: 420
+      sources:
+      - serviceAccountToken:
+          path: token
+          audience: https://gcp.a-z.dev
+          expirationSeconds: 1800   # default 1h, min 10m, rotated automatically at 80% lifetime
+      - configMap:
+          name: my-cloudsdk-config
+          optional: false
+          items:
+            - key: "config"
+              path: "google-application-credentials.json"
