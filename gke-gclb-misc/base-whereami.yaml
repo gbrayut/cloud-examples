@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-gclb
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whereami
+  namespace: test-gclb
+  labels:
+    app: whereami
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: whereami
+  template:
+    metadata:
+      labels:
+        app: whereami
+    spec:
+      containers:
+      # https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/whereami
+      - name: whereami
+        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.19
+        ports:
+        - containerPort: 8080
+        env:
+        - name: NODE_NAME #The node name the pod is running on
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_NAMESPACE #The kubernetes Namespace where the Pod is running
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP #The IP address of the pod
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: ECHO_HEADERS
+          value: "True"
+---
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "whereami"
+  namespace: test-gclb
+spec:
+  # See https://istio.io/latest/docs/ops/configuration/traffic-management/protocol-selection/
+  ports:
+  - port: 80
+    targetPort: 8080
+    appProtocol: http
+    name: http
+  selector:
+    app: "whereami"
+  type: "ClusterIP"

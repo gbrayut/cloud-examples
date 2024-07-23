@@ -1,0 +1,56 @@
+# Using GKE Ingress Controller to create L7 Classic HTTPS External LB
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hostname-external
+  namespace: test-gclb
+  annotations:  # See https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balance-ingress#ingress_annotations
+    kubernetes.io/ingress.class: gce
+spec:
+  rules:
+    # https://github.com/kubernetes-client/c/blob/master/kubernetes/docs/v1_ingress_rule.md
+    - host: example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: whereami
+                port:
+                  number: 80
+  #defaultBackend:
+  #  service:
+  #    name: whereami
+  #    port:
+  #      number: 80
+---
+# Internal LB
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hostname-internal
+  namespace: test-gclb
+  annotations:
+    kubernetes.io/ingress.class: gce-internal
+spec:
+  rules:
+    - host: example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: whereami
+                port:
+                  number: 80
+
+  # - host: example.com:80  # This entry is not valid. See https://github.com/kubernetes-client/c/blob/master/kubernetes/docs/v1_ingress_rule.md
+  # The Ingress "hostname-internal" is invalid: spec.rules[0].host: Invalid value: "example.com:80": a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, '-' or '.', and must start and end with an alphanumeric character (e.g. 'example.com', regex used for validation is '[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*')
+
+  #defaultBackend:
+  #  service:
+  #    name: whereami
+  #    port:
+  #      number: 80
