@@ -8,6 +8,9 @@ gcloud secrets create test-secret --data-file=<(echo -n hunter2) \
 
 # https://cloud.google.com/sdk/gcloud/reference/secrets/versions/access
 gcloud secrets versions access --secret test-secret latest 
+
+gcloud secrets create another --data-file=<(echo -n hunter1) \
+    --labels="mylabel=test" --set-annotations="myannotation=test"
 ```
 
 
@@ -26,7 +29,7 @@ gcloud secrets add-iam-policy-binding test-secret \
 # Confirm values are mounted into pod filesystem
 kubectl exec -it -n test-secrets gcloud-bare-pod -- /bin/bash -c 'grep . /var/secrets/*.txt'
 
-# Can also grant access to all KSA in the test-secretes namespace using:
+# Can also grant access to all KSA in the test-secrets namespace using:
 gcloud secrets add-iam-policy-binding test-secret \
     --role=roles/secretmanager.secretAccessor \
     --member="principalSet://$PRINCIPAL_BASE/namespace/test-secrets"
@@ -39,12 +42,12 @@ gcloud secrets add-iam-policy-binding test-secret \
   --member="principalSet://$PRINCIPAL_BASE/kubernetes.cluster/$CLUSTER_ID"
 
 # Or grant access to all KSA for a specific fleet/Workload Identity Pool
-# see https://cloud.google.com/iam/docs/principal-identifiers for v1 and v2 versions
+# see https://cloud.google.com/iam/docs/principal-identifiers for v1 and v2 versions of all workload pool identities
 gcloud secrets add-iam-policy-binding test-secret \
   --role=roles/secretmanager.secretAccessor \
   --member="group:$PROJECT_ID.svc.id.goog:/allAuthenticatedUsers/"
 
-# "principalSet://$PRINCIPAL_BASE/*" should work if it was a non-gke identity pool, but gives an error:
+# v2 "principalSet://$PRINCIPAL_BASE/*" should work if it was a non-gke identity pool, but gives an error for GKE WI Pools:
 # ERROR: (gcloud.secrets.add-iam-policy-binding) Status code: 400. Identity Pool does not exist (projects/503076227230/locations/global/workloadIdentityPools/gregbray-vpc.svc.id.goog). Please check that you specified a valid resource name as returned in the `name` attribute in the configuration API..
 ```
 
@@ -58,7 +61,7 @@ Note: [Principal attributes](https://cloud.google.com/iam/docs/conditions-attrib
 
 ```shell
 
-# Grant namespace access based on SecretVersion name
+# Grant namespace access to multiple SecretVersion based on target resource name
 # See https://cloud.google.com/iam/docs/conditions-resource-attributes#resource-name
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --role=roles/secretmanager.secretAccessor \
@@ -76,4 +79,4 @@ END
 
 TODO: Add non-file example using --condition="expression=resource.blah,title=allow_blah"
 
-TODO: See if Secret Manager supports https://cloud.google.com/iam/docs/conditions-resource-attributes#resource-tags
+TODO: See if Secret Manager supports https://cloud.google.com/iam/docs/conditions-resource-attributes#resource-tags as that would be a best practice if it works
