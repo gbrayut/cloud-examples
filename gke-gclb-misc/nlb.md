@@ -8,7 +8,9 @@ Even when using VPC Native GKE clusters, NLB are currently always routed thru no
 
 [Pricing](https://cloud.google.com/kubernetes-engine/docs/concepts/service-load-balancer#pricing_and_quotas) for Passthrough and Proxy Network Load balancer should be the same (based on number of forwarding rules and overall bandwidth). There is a proxy instance charge for L7 Application Load Balancers, but there is no equivalent per instance SKU for L4 NLBs. And because Global Access allows clients from any region to access your internal load balancer, additional cross-region data transfer charges are incurred when traffic is sent to or from a client in a different region than the load balancer.
 
-See [base-whereami-spread.yaml](./base-whereami-spread.yaml) for example of NLB and Standalone NEG with more details in Google Cloud Console [Network Services](https://console.cloud.google.com/net-services/loadbalancing/list/loadBalancers) section.
+See [base-whereami-spread.yaml](./base-whereami-spread.yaml) for example of NLB and Standalone NEG.
+
+And more details in Google Cloud Console [Network Services](https://console.cloud.google.com/net-services/loadbalancing/list/loadBalancers) or GKE [Services](https://console.cloud.google.com/kubernetes/discovery) sections.
 
 ## Internal Passthrough NLB
 
@@ -84,7 +86,7 @@ timeoutSec: 30
 $ gcloud container clusters update gke-iowa --enable-l4-ilb-subsetting --project gregbray-gke-v1 --region us-central1
 # Enabling L4 ILB Subsetting is a one-way operation.
 # Once enabled, this configuration cannot be disabled.
-# Existing ILB services should be recreated to start using Subsetting.
+# Existing ILB services should be deleted and/or recreated to start using Subsetting.
 
 $ gcloud compute forwarding-rules list --filter="loadBalancingScheme=INTERNAL" --project gregbray-gke-v1
 NAME                                                      REGION       IP_ADDRESS    IP_PROTOCOL  TARGET

@@ -1,6 +1,8 @@
 # Details on creating a manual/custom NLB
 
-TODO: fill in more details on options 1,2,3 from [ds-whereami](./ds-whereami.yaml) for combining multiple NEGs (possibly from different clusters in the same region) into one Passthru NLB
+Very rough outline of steps at [setup.sh](./setup.sh) for combining multiple existing NEGs (possibly from different clusters in the same region) into one Passthrough NLB.
+
+TODO: fill in more details on options 1,2,3 from [ds-whereami.yaml](./ds-whereami.yaml)
 
 1) Use a deployment or daemonset with `hostNetwork: True` so the pod receives the packets from forwarding rule (no iptables NAT rule required). Daemonset makes it easy to prevent multiple pods on same node (causing port binding conflicts). But if you need to scale using an HPA then a dedicated nodepool that is sized to fit only one pod would also work.
 
@@ -15,6 +17,7 @@ TODO: fill in more details on options 1,2,3 from [ds-whereami](./ds-whereami.yam
 ## Packet capture via tshark
 
 View packets routed to nodes (easiest to test using a single NEG on be-ilb)
+
 TODO: switch to `kubectl debug node/gke-gke-iowa-default-pool-138fb5f3-x6jk ...`
 
 ```
@@ -34,6 +37,10 @@ Capturing on 'eth0'
     5 9.499230267 10.31.232.12 → 10.31.232.13 TCP 74 39756 → 30080 [SYN] Seq=0 Win=65320 Len=0 MSS=1420 SACK_PERM=1 TSval=2460243534 TSecr=0 WS=128
     6 9.499328345 10.31.232.13 → 10.31.232.12 ICMP 102 Destination unreachable (Port unreachable)
 
-# above shows testing each port from VM in VPC but missing NAT rule.
+# above shows testing each port from VM in VPC but missing NAT rule. src/dst filters out noisy health checks
 # Last one is because target pod wasn't healthy
+
+# Can also inspect iptable rules for kubernetes. see https://www.stackrox.io/blog/kubernetes-networking-demystified/
+iptables --table nat --list
+iptables -t nat -L KUBE-SERVICES
 ```

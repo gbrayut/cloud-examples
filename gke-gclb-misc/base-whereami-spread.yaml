@@ -72,8 +72,8 @@ spec:
         - name: ECHO_HEADERS
           value: "True"
 ---
-# Internal passthru NLB https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing
-# by default cluster without subsetting use instance groups backends for passthru NLB
+# Internal passthrough NLB https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing
+# by default cluster without subsetting use instance groups backends for passthrough NLB
 # clusters using --enable-l4-ilb-subsetting will instead create a GCE_VM_IP NEG per zone for Service type LoadBalancer
 # Standalone NEG will create zonal GCE_VM_IP_PORT https://cloud.google.com/kubernetes-engine/docs/how-to/standalone-neg
 apiVersion: "v1"

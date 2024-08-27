@@ -18,7 +18,7 @@ gcloud compute backend-services create be-ilb \
 # for hc-http-80 or other regional check add
     --health-checks-region=us-central1
 
-# Cannot use standalone neg (GCE_VM_IP_PORT) for passthru NLB (requires GCE_VM_IP)
+# Cannot use standalone neg (GCE_VM_IP_PORT) for passthrough NLB (requires GCE_VM_IP)
 gcloud compute backend-services add-backend be-ilb \
    --network-endpoint-group test-standalone \
    --network-endpoint-group-zone=us-central1-a \
@@ -56,7 +56,10 @@ gcloud compute forwarding-rules create fr-ilb \
 # 32106 is from an auto generated NodePort on existing NLB (kubectl describe -n test-gclb svc/whereami-spread)
 # Note: may also need to configure firewall rules for 0.0.0.0->gke node IP:port
 
-# Can then test using options like
+# Packets should now be routed to the node when sending requests to NLB IP.
+# packet capture details https://github.com/gbrayut/cloud-examples/tree/main/gke-gclb-misc/custom-nlb#packet-capture-via-tshark
+
+# Depending on which option you enable you can test using:
 
 curl -vs http://10.31.232.10  # whereami-spread original NLB (no-subsetting)
 curl -vs http://10.31.232.11  # whereami-spread-new subsetting NLB (after editing name and re-applying ds-whereami.yaml)
