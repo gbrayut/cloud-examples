@@ -1,3 +1,4 @@
+# Simple whereami deployment with ClusterIP Service
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -21,21 +22,21 @@ spec:
         app: whereami
     spec:
       containers:
-      # https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/whereami
+      # https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/quickstarts/whereami
       - name: whereami
-        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.19
+        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.22
         ports:
         - containerPort: 8080
         env:
-        - name: NODE_NAME #The node name the pod is running on
+        - name: NODE_NAME
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
-        - name: POD_NAMESPACE #The kubernetes Namespace where the Pod is running
+        - name: POD_NAMESPACE
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        - name: POD_IP #The IP address of the pod
+        - name: POD_IP
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
@@ -48,7 +49,6 @@ metadata:
   name: "whereami"
   namespace: test-gclb
 spec:
-  # See https://istio.io/latest/docs/ops/configuration/traffic-management/protocol-selection/
   ports:
   - port: 80
     targetPort: 8080

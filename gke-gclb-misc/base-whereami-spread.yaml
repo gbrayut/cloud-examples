@@ -1,0 +1,123 @@
+# spread pods across zones https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-gclb
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whereami-spread
+  namespace: test-gclb
+  labels:
+    app: whereami-spread
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: whereami-spread
+  template:
+    metadata:
+      labels:
+        app: whereami-spread
+    spec:
+      terminationGracePeriodSeconds: 0
+      # Balance pods across hosts or zones https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/
+      # NOTE: spread constraints are NOT taken into account when scaling down, only when scheduling new pods
+      topologySpreadConstraints:
+      - maxSkew: 1  # this is how many additional pods are allowed to running on a host/zone compared to other cohort members
+        topologyKey: topology.kubernetes.io/zone  # or kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule    # Note this will still NOT ensure perfect spread as there are many cases where skew can occur
+        labelSelector:
+          matchLabels:
+            app: whereami-spread
+        # see TopologySpread beta status below and at https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/
+        #matchLabelKeys:
+        #- pod-template-hash  # unique label generated each time a deployment spec is updated. Use this for per revision spread.
+        #nodeAffinityPolicy: Ignore
+      
+      #nodeSelector:
+      #  node-role.kubernetes.io/control-plane: ""  # Don't schedule on k3s control plane nodes
+      
+      # Alternative to topology spread is anti-affinity which can prevent multiple pods on same node/zone
+      #affinity:
+      #  podAntiAffinity:
+      #    requiredDuringSchedulingIgnoredDuringExecution:
+      #    - labelSelector:
+      #        matchExpressions:
+      #        - key: app
+      #          operator: In
+      #          values:
+      #          - whereami-spread
+      #      topologyKey: "topology.kubernetes.io/zone"
+      containers:
+      # https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/quickstarts/whereami
+      - name: whereami
+        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.22
+        ports:
+        - containerPort: 8080
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: ECHO_HEADERS
+          value: "True"
+---
+# Internal passthru NLB https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing
+# by default cluster without subsetting use instance groups backends for passthru NLB
+# clusters using --enable-l4-ilb-subsetting will instead create a GCE_VM_IP NEG per zone for Service type LoadBalancer
+# Standalone NEG will create zonal GCE_VM_IP_PORT https://cloud.google.com/kubernetes-engine/docs/how-to/standalone-neg
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "whereami-spread"   # or whereami-spread-new after enabling subsetting if you want both
+  namespace: test-gclb
+  # https://cloud.google.com/kubernetes-engine/docs/concepts/service-load-balancer-parameters#service_parameters
+  annotations:
+    networking.gke.io/load-balancer-type: "Internal"
+    networking.gke.io/internal-load-balancer-allow-global-access: "true"
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    appProtocol: http
+    name: http
+  selector:
+    app: "whereami-spread"
+  type: "LoadBalancer"
+# default unmanaged instance group backend format: k8s-ig--RANDOM_HASH? Forwarding Rule: 32 hexadecimal digit GUID?
+# example: k8s-ig--9be17460365bd3d3 and a6026cb9fecd24fbabbe8b5b90722380
+# subsetting format: k8s2-CLUSTER_UID-NAMESPACE-SERVICE-RANDOM_HASH? Forwarding Rule: k8s2-PROTOCOL-CLUSTER_UID-NAMESPACE-SERVICE-RANDOM_HASH? 
+# example: k8s2-j71w3amp-test-gclb-whereami-spread-new-jaxls3y9 and k8s2-tcp-j71w3amp-test-gclb-whereami-spread-new-jaxls3y9
+---
+# Standalone NEG for zonal GCE_VM_IP_PORT https://cloud.google.com/kubernetes-engine/docs/how-to/standalone-neg
+# If name is omited it will use the format: k8s1-CLUSTER_UID-NAMESPACE-SERVICE-PORT-RANDOM_HASH
+# Also Size seems to always be zero when viewed via gcloud?
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "wai-sa-neg"
+  namespace: test-gclb
+  # https://cloud.google.com/kubernetes-engine/docs/concepts/service-load-balancer-parameters#service_parameters
+  annotations:
+    cloud.google.com/neg: '{"exposed_ports": {"80":{"name": "test-standalone"}}}'
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    appProtocol: http
+    name: http
+  selector:
+    app: "whereami-spread"
+  type: "ClusterIP"   # Can still use other types as well but ClusterIP is usually recommended

@@ -1,0 +1,68 @@
+# Examples of how to route requests to backend GKE pods via manual/custom passthrough NLB
+# NLB packet routing details at https://cloud.google.com/load-balancing/docs/internal#tcp-udp-request-return
+# See also https://github.com/gbrayut/cloud-examples/tree/main/gke-gclb-misc/custom-nlb/setup.sh
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ds-whereami
+  namespace: test-gclb
+  labels:
+    app: ds-whereami
+spec:
+  selector:
+    matchLabels:
+      app: ds-whereami
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: ds-whereami
+    spec:
+      terminationGracePeriodSeconds: 0
+      hostNetwork: true     # Option 1) Use host network so container binding to 0.0.0.0 can respond to NLB IP requests (assuming container port matches what client used)
+      # side note: when using host network, whereami response lists pod name as host name (via python socket.gethostname() call)
+      containers:
+      # https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/quickstarts/whereami
+      - name: whereami
+        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.22
+        env:
+        - name: PORT
+          value:  "18080"   # port container uses must be unique port not already in use on host network interface or there will be binding conflict
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: ECHO_HEADERS
+          value: "True"
+---
+# Option 2) Service with explicit nodeport. Note that "allocateLoadBalancerNodePorts: true" is the default, so could also just add externalTrafficPolicy and whatever nodePort it selected for an existing service type LoadBalancer
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "whereami-nodeport"
+  namespace: test-gclb
+spec:
+  # Option 3) let Kubernetes create NAT rule for node requests to pod by specifying externalIP https://kubernetes.io/docs/concepts/services-networking/service/#external-ips
+  # Requires https://cloud.google.com/sdk/gcloud/reference/container/clusters/update#--enable-service-externalips
+  # which is a mitigation of issue https://github.com/kubernetes/kubernetes/issues/97110 (likely want Policy to only allow use in specific namespaces)
+  externalIPs:
+    - "10.31.232.13"            # value should match the IP used when creating the internal forwarding rule
+  externalTrafficPolicy: Local  # only forward node's requests to local pods on same node (bypass kubernetes default load balancing of pods)  
+  ports:
+  - name: http
+    port: 80
+    targetPort: 18080
+    protocol: TCP
+    nodePort: 30080     # For Option 2 This must also be globally unique and will get registered on all nodes for forwarding node requests to service endpoints
+  selector:
+    app: "ds-whereami"
+  type: "NodePort"      # Option 3 should work for all three service types, but cannot be used on existing GKE managed load balancers
