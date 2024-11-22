@@ -86,6 +86,7 @@ metadata:
     networking.gke.io/load-balancer-type: "Internal"
     networking.gke.io/internal-load-balancer-allow-global-access: "true"
 spec:
+  # trafficDistribution: "PreferClose" # Beta in 1.31 used to prioritize same zone/region https://kubernetes.io/docs/reference/networking/virtual-ips/#traffic-distribution
   ports:
   - port: 80
     targetPort: 8080
