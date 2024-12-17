@@ -55,7 +55,7 @@ gcloud secrets add-iam-policy-binding test-secret \
 
 Instead of granting permissions on individual secrets, you can instead use project/folder/organization level [IAM Conditions](https://cloud.google.com/iam/docs/conditions-overview) for [resource attributes](https://cloud.google.com/iam/docs/conditions-attribute-reference#resource).
 
-Note: Not sure if you can use attribute/labels/tags in the conditions, but I suspect it only supports the resource name since that is the only parameter in the project.secrets.versions [access method](https://cloud.google.com/secret-manager/docs/reference/rest/v1/projects.secrets.versions/access).
+Note: I don't believe attribute or labels can be used in the conditions. I suspect it only supports the resource name since that is the only parameter in the project.secrets.versions [access method](https://cloud.google.com/secret-manager/docs/reference/rest/v1/projects.secrets.versions/access).
 
 Note: [Principal attributes](https://cloud.google.com/iam/docs/conditions-attribute-reference#principals) can only be used when creating [Principal Access Boundary Policies](https://cloud.google.com/iam/docs/principal-access-boundary-policies). You cannot dynamically evaluate rules based on the principal or any other GKE identity attributes besides the ones listed above.
 
@@ -77,6 +77,6 @@ END
 )
 ```
 
-TODO: Add non-file example using --condition="expression=resource.blah,title=allow_blah"
+Instead of using --condition-from-file there is also an inline --condition="expression=resource.blah,title=allow_blah" option.
 
-TODO: See if Secret Manager supports https://cloud.google.com/iam/docs/conditions-resource-attributes#resource-tags as that would be a best practice if it works
+Resource Manager [Tag support](https://cloud.google.com/secret-manager/docs/create-and-manage-tags) for Secret Manager serets is currently in Preview and should also support [conditional IAM access](https://cloud.google.com/iam/docs/tags-access-control).
