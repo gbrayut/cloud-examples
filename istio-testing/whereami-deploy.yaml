@@ -16,7 +16,7 @@ spec:
         traffic.sidecar.istio.io/includeInboundPorts: '*'
         traffic.sidecar.istio.io/excludeInboundPorts: '1234'
         traffic.sidecar.istio.io/includeOutboundPorts: '9090' # This doesn't override the implicit *, just the IPRange checks
-        traffic.sidecar.istio.io/excludeOutboundPorts: '9900,9999' # This does what you would expect (iptable rule for direct access)
+        traffic.sidecar.istio.io/excludeOutboundPorts: '9900,9999' # This creates a new iptable rule so those egress TCP flows bypass the local sidecar (direct server access)
       labels:
         app: whereami
     spec:
