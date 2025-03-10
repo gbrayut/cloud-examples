@@ -5,7 +5,8 @@ metadata:
   namespace: default
   labels:
     cloud.google.com/apply-warden-policies: "true"
-# The template is used by GKE scheduler to figure out how many nodes are needed. It does NOT generate actual pods.
+# The template is used by GKE scheduler to figure out how many nodes are needed.
+# It does NOT generate actual pods!
 template:
   metadata:
     labels:
@@ -40,7 +41,7 @@ spec:
   parameters:
     maxRunDurationSeconds: "3600"
   podSets:
-  - count: 2
+  - count: 2          # combined with container resource requests above to determine size of node pool (two a3-highgpu-8g in this case)
     podTemplateRef:
       name: dws-pr-template
 
