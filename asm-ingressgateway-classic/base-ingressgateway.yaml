@@ -3,7 +3,7 @@ apiVersion: v1
 kind: Namespace
 metadata:
   labels:
-    istio.io/rev: asm-managed
+    istio.io/rev: default
   name: istio-ingress
 ---
 apiVersion: v1
