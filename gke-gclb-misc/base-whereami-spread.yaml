@@ -53,7 +53,7 @@ spec:
       containers:
       # https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/quickstarts/whereami
       - name: whereami
-        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.22
+        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.24
         ports:
         - containerPort: 8080
         env:

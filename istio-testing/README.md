@@ -1,6 +1,6 @@
 # Example commands for testing istio/envoy proxy
 
-[whereami](https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/whereami) makes a good test pod, but for more information (headers, src port, etc) try https://github.com/InAnimaTe/echo-server or https://github.com/mccutchen/go-httpbin
+[whereami](https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/quickstarts/whereami) makes a good test pod, but for more information (headers, src port, etc) try https://github.com/InAnimaTe/echo-server or https://github.com/mccutchen/go-httpbin
 
 ```bash
 # See whereami-deploy.yaml for client test pod that deploys into an namespace with sidecar istio-injection

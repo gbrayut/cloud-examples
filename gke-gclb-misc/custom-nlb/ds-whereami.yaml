@@ -25,7 +25,7 @@ spec:
       containers:
       # https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/quickstarts/whereami
       - name: whereami
-        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.22
+        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.24
         env:
         - name: PORT
           value:  "18080"   # port container uses must be unique port not already in use on host network interface or there will be binding conflict

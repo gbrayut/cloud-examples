@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.8
+        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.24
         ports:
         - containerPort: 8080
 ---

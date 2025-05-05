@@ -14,7 +14,7 @@ resource "google_project" "my_project" {
 // NOTE: This is authoritative and would replace any other entries
 resource "google_folder_iam_policy" "folder" {
   folder      = google_folder.development.name
-  policy_data = data.google_iam_policy.admin.policy_data
+  policy_data = data.google_iam_policy.owners.policy_data
 }
 
 // https://registry.terraform.io/providers/hashicorp/google/latest/docs/data-sources/iam_policy
@@ -31,4 +31,3 @@ data "google_iam_policy" "owners" {
 
 // Can also set at project level using https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/google_project_iam
 // This example uses non-authoratative iam_member entries which combine with other member resources
-

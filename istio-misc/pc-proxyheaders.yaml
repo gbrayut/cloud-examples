@@ -24,9 +24,9 @@ spec:
               value: "my-custom-server"   # when server header enabled, this will overide local sidecar value for all responses (in mesh or outside clients as well)
     spec:
       containers:
-      # https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/whereami
+      # https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/quickstarts/whereami
       - name: whereami
-        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.19
+        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.24
         ports:
         - containerPort: 8080
         env:

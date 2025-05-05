@@ -112,7 +112,7 @@ With everything in place you can now validate the mesh is routing requests for s
 ```shell
 # Add a test pod to istio-system namespace for curl testing of NLBs without 
 # an istio sidecar (better mimics request from a VM outside the mesh)
-kubectl run test -n istio-system --image=us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.19
+kubectl run test -n istio-system --image=us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.24
 
 # Optional: on both clusters scale deployments down to a single pod to make things easier to read
 kubectl delete hpa -n istio-ingress istio-ingressgateway  # Cannot scale down manually if HPA exists
@@ -190,7 +190,7 @@ appuser@test:/app$ curl -sH "Metadata-Flavor: Google" "http://metadata.google.in
 projects/50123456789/zones/us-west1-c
 
 # the whereami container has endpoints like whatever/zone and something/cluster_name to show details about the pod
-# see https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/whereami
+# see https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/quickstarts/whereami
 
 # when using .../app-1/zone with locality DR you should always see the local region (if there are healthy pods)
 appuser@test:/app$ curl http://whereami.example.com/app-1/zone;echo ''

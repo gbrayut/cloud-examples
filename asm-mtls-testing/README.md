@@ -101,7 +101,7 @@ You can then attempt to access the services from outside the mesh via a pod that
 
 ```shell
 # Start a test pod in istio-system namespace, which usually does not inject sidecars by default
-kubectl run test -n istio-system -it --rm --image=us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.19 --command -- /bin/bash
+kubectl run test -n istio-system -it --rm --image=us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.24 --command -- /bin/bash
 
 # Send request to permissive app-1
 appuser@test:/app$ curl -vs http://whereami.app-1.svc.cluster.local

@@ -22,7 +22,7 @@ kubectl apply -f https://raw.githubusercontent.com/gbrayut/cloud-examples/main/a
 kubectl apply -f https://raw.githubusercontent.com/gbrayut/cloud-examples/main/asm-ingressgateway-classic/istio-gw-virtualservice-cors.yaml
 
 # At this point you could do a simple (non-cors) test inside the cluster using:
-kubectl run test -n istio-system --image=us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.9
+kubectl run test -n istio-system --image=us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.24
 kubectl exec -it test -n istio-system -- /bin/bash
 curl -H "Host: anywhere.example.com" -v http://ingressgateway.istio-ingress.svc.cluster.local
 # then exit and delete the bare pod: kubectl delete pod -n istio-system test
