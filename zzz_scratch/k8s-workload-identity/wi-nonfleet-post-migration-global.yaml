@@ -1,0 +1,77 @@
+# same but for fleet workload identity... seem to not work yet though at least with ubermints
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gcloud-ksa
+  namespace: testing
+automountServiceAccountToken: false # set this to false when using projected volume for token
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  namespace: testing
+  name: fleet-cloudsdk-config
+data:
+  # I haven't seen any public doc or references for "audience...container" or "securetoken...identitybindingtoken", only the config files for Fleet Identity or Workload Identity Federation
+  config: |
+    {
+      "type": "external_account",
+      "audience": "identitynamespace:gregbray-vpc.svc.id.goog:https://container.googleapis.com/v1/projects/gregbray-vpc/locations/us-west1/clusters/gke-oregon",
+      "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+      "token_url": "https://sts.googleapis.com/v1/token",
+      "credential_source": {
+        "file": "/var/run/secrets/tokens/gcp-ksa/token"
+      }
+    }
+# impersonate GSA using "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/test-sa@gregbray-vpc.iam.gserviceaccount.com:generateAccessToken",
+# scopes not working? tried "scopes": ["https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/userinfo.email","openid"],
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fleet-bare-pod
+  namespace: testing
+spec:
+  terminationGracePeriodSeconds: 0
+  serviceAccountName: gcloud-ksa
+  containers:
+  - image: gcr.io/google.com/cloudsdktool/google-cloud-cli:latest # Very large image but has most developer tools installed
+    #image: google/cloud-sdk:slim     # :slim or :latest are much smaller but missing python/etc
+    name: gcloud
+    command: ["sleep","infinity"]
+    env:
+      # configure ADC environment variable
+      - name: GOOGLE_APPLICATION_CREDENTIALS
+        value: /var/run/secrets/tokens/gcp-ksa/google-application-credentials.json
+    volumeMounts:
+    # mount projected token
+    - name: ksa
+      mountPath: /var/run/secrets/tokens/gcp-ksa
+      readOnly: true
+  volumes:
+  # configure config volume and projected ksa token with audience that matches allowed value in workload identity federation pool
+  - name: ksa
+    projected:
+      defaultMode: 420
+      sources:
+      - serviceAccountToken:
+          path: token
+          audience: gregbray-vpc.svc.id.goog  # should match workload identity pool
+          expirationSeconds: 1800   # default 1h, min 10m, rotated automatically at 80% lifetime
+      - configMap:
+          name: fleet-cloudsdk-config
+          optional: false
+          items:
+            - key: "config"
+              path: "google-application-credentials.json"
+# test token using below or pip+gcs-buckets.py stuff at https://github.com/gbrayut/cloud-examples/tree/main/kind-identity-federation#configure-google-cloud-workload-identity-federation-pool
+
+#gcloud projects add-iam-policy-binding gregbray-vpc --role="roles/storage.admin" --member="principal://iam.googleapis.com/projects/208759986499/locations/global/workloadIdentityPools/gregbray-fleet.svc.id.goog/subject/ns/testing/sa/gcloud-ksa"
+
+
+#fleettoken=$(kubectl exec -it pod/fleet-bare-pod --namespace testing -- gcloud auth application-default print-access-token)
+#curl -H "Authorization: Bearer $fleettoken" https://www.googleapis.com/oauth2/v3/userinfo   # I think this only works for identity tokens
+#curl -H "Authorization: Bearer $fleettoken" https://www.googleapis.com/oauth2/v3/tokeninfo  # But this should work for access tokens
+
+# May also see list bucket entries in type.googleapis.com/google.cloud.audit.AuditLog after enabling ADMIN_READ https://cloud.google.com/storage/docs/audit-logging
+# See https://console.cloud.google.com/iam-admin/audit?project=gregbray-vpc to enable ADMIN_READ and/or DATA_READ
