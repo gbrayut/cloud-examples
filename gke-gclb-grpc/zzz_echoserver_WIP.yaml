@@ -1,0 +1,39 @@
+# see details at https://gist.github.com/gbrayut/b0b3d75b6b5b84782884ad119f64881d
+---
+kind: HTTPRoute
+apiVersion: gateway.networking.k8s.io/v1beta1
+metadata:
+  name: grpc-httproute
+spec:
+  parentRefs:
+  - kind: Gateway
+    name: grpc-gateway
+  rules:
+  # grpcurl first does a reflection call. Routing those to backend makes testing a bit easier
+  #- matches:
+  #  - path:
+  #      type: PathPrefix
+  #      value: /grpc.reflection
+  #  backendRefs:
+  #  - name: grpc-svc
+  #    port: 80
+  #- matches:
+  #  - path:
+  #      type: PathPrefix
+  #      value: /main.HelloWorld/Greeting
+  #  backendRefs:
+  #  - name: grpc-svc
+  #    port: 80
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /test
+    backendRefs:
+    - name: grpc-svc
+      port: 8080
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: grpc-svc
