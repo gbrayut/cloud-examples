@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    istio.io/rev: default # asm-managed-stable
+  name: nginx
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  namespace: nginx
+spec:
+  type: LoadBalancer    # Create an external NLB so it is easier to test. Could also change this to just ClusterIP
+  ports:
+    - port: 80
+  selector:
+    app: nginx
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  namespace: nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+      #annotations:
+        # Prevent nginx from pre-resolving addresses https://github.com/istio/istio/issues/14450#issuecomment-498771781
+        #nginx.ingress.kubernetes.io/service-upstream: "true"
+        # This may only work if using nginx ingress controller. See "proxy_ssl_server_name on" settings below
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - mountPath: /etc/nginx/nginx.conf
+              name: nginx-conf
+              subPath: nginx.conf
+      volumes:
+      - configMap:
+          name: nginx-config
+        name: nginx-conf
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: nginx
+data:
+  nginx.conf: |
+    events {
+      worker_connections 1024;
+    }
+    http {
+      server {
+
+        listen 80;       
+        location / {
+          #index index.html;
+          #root /usr/share/nginx/html/;
+          default_type text/html;
+          return 200 "<!DOCTYPE html>root index\n";
+        }
+
+        # proxy_pass uses HTTP 1.0 by default, resulting in HTTP/1.1 426 Upgrade Required by envoy sidecar in front of app-1
+        location /app-1 {
+          proxy_pass http://whereami.app-1.svc.cluster.local;
+          # access_log /var/log/nginx/access-proxy.log upstream_time;
+        }
+        # app-2 is strict mTLS and results in HTTP/1.1 502 Bad Gateway
+        location /app-2 {
+          proxy_pass http://whereami.app-2.svc.cluster.local;
+        }
+
+        # Add headers on proxy request to http 1.1 https://www.tencentcloud.com/document/product/1152/47510 and this now works as expected
+        location /h11-app-1 {
+          proxy_pass http://whereami.app-1.svc.cluster.local;
+          proxy_http_version 1.1;
+          proxy_set_header Connection "";
+        }
+
+        # This also should work as long as nginx has side car injected, otherwise mTLS is expected to block connection with this in the nginx logs:
+        # 2024/06/04 22:09:26 [error] 29#29: *3 recv() failed (104: Connection reset by peer) while reading response header from upstream, client: 23.93.173.248, server: , request: "GET /h11-app-2 HTTP/1.1", upstream: "http://10.68.69.197:80/h11-app-2", host: "34.83.80.39"
+        location /h11-app-2 {
+          proxy_pass http://whereami.app-2.svc.cluster.local;
+          proxy_http_version 1.1;
+          proxy_set_header Connection "";
+        }
+      }
+    }

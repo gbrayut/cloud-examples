@@ -1,0 +1,36 @@
+# Based on https://github.com/GoogleCloudPlatform/anthos-service-mesh-packages/blob/main/samples/gateways/istio-ingressgateway/service.yaml
+# Find in console at https://console.cloud.google.com/net-services/loadbalancing/list/loadBalancers
+apiVersion: v1
+kind: Service
+metadata:
+  name: istio-ingressgateway
+  namespace: istio-ingress
+  labels:
+    app: istio-ingressgateway
+    istio: ingressgateway
+  annotations:
+    # https://cloud.google.com/kubernetes-engine/docs/concepts/service-load-balancer-parameters
+    cloud.google.com/l4-rbs: "enabled"    # Use this for external passthrough NLB with regional backend services (recommended). Omit for Target pool NLB https://cloud.google.com/kubernetes-engine/docs/how-to/backend-service-based-external-load-balancer#create-the-external-lb-service
+    # svc/gateway does not yet support external proxy NLB (except via standalone neg?) https://cloud.google.com/load-balancing/docs/proxy-network-load-balancer#ext-proxy-netlb
+spec:
+  ports:
+  # status-port exposes a /healthz/ready endpoint that can be used with GKE Ingress health checks
+  - name: status-port
+    port: 15021
+    protocol: TCP
+    targetPort: 15021
+  # Any ports exposed in Gateway resources should be exposed here.
+  # See also https://istio.io/latest/docs/ops/configuration/traffic-management/protocol-selection/
+  - name: http
+    appProtocol: http
+    port: 80
+  - name: https
+    appProtocol: https
+    port: 443
+  - name: tls
+    appProtocol: tls
+    port: 8443
+  selector:
+    istio: ingressgateway
+    app: istio-ingressgateway
+  type: LoadBalancer
