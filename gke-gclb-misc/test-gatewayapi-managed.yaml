@@ -1,0 +1,100 @@
+# Gateway API option using gke-l7-global-external-managed Envoy based proxy
+# see https://cloud.google.com/kubernetes-engine/docs/how-to/gatewayclass-capabilities
+kind: Gateway
+apiVersion: gateway.networking.k8s.io/v1beta1
+metadata:
+  name: whereami-lb-managed
+  namespace: test-gclb
+  #annotations:
+  #  # Assign certs via Certificate Manager https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-certificate-manager
+  #  networking.gke.io/certmap: gke-gateway-map
+spec:
+  gatewayClassName: gke-l7-global-external-managed  # Based on Envoy
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 80
+
+  #- name: https
+  #  protocol: HTTPS
+  #  port: 443
+  #  
+  #  # Or instead of using a certmap, assign ssl certs similar to classic GCLBs https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-ssl-certificate
+  #  tls:
+  #    mode: Terminate    # Must terminate, Passthrough only supported on a few GCLB classes
+  #    options: 
+  #      networking.gke.io/pre-shared-certs: "test-ingress"
+
+  #addresses:
+  #- type: NamedAddress
+  #  value: whereami-static-ip
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: whereami-route-managed
+  namespace: test-gclb
+spec:
+  parentRefs:
+  - name: whereami-lb-managed
+  #hostnames:
+  #- "*.example.com"
+  rules:    # More examples at https://gateway-api.sigs.k8s.io/api-types/httproute/#backendrefs-optional
+  # Send /no-spread* requests to gke-gclb-misc/base-whereami.yaml
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /no-spread
+    backendRefs:
+    - name: whereami
+      port: 80
+  # Send everything else to gke-gclb-misc/base-whereami-spread.yaml
+  - matches:
+    - path:
+        value: /
+    backendRefs:
+    - name: whereami-spread
+      port: 80
+---
+# https://cloud.google.com/kubernetes-engine/docs/how-to/configure-gateway-resources
+# Below shows various options you can configure for a BackendService referenced in HttpRoute
+# Changes should be visible in Load Balancers and Backends section at https://console.cloud.google.com/net-services/loadbalancing/list/loadBalancers
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: whereami-backend-policy
+  namespace: test-gclb
+spec:
+  default:
+    timeoutSec: 30  # Default is 30s, this just makes this section not empty
+
+    # https://cloud.google.com/kubernetes-engine/docs/how-to/configure-gateway-resources#session_affinity
+    #sessionAffinity:
+    #  type: CLIENT_IP
+
+    # https://cloud.google.com/kubernetes-engine/docs/how-to/configure-gateway-resources#http_access_logging
+    # If this section is omitted, logging is disabled by default
+    # If GCPBackendPolicy is not provided for a BackendService, logging is enabled by default at 100%
+    #logging:
+    #  enabled: true
+    #  sampleRate: 500_000   # 1_000_000 is 100%
+    #  #optionalMode: CUSTOM
+    #  #optionalFields:
+    #  #- tls.cipher
+    #  #- orca_load_report.cpu_utilization
+  targetRef:
+    group: ""
+    kind: Service
+    name: whereami-spread   # The above settings will only effect the whereami-spread BackendService
+
+#
+# Testing
+#
+
+# kubectl apply -f https://raw.githubusercontent.com/gbrayut/cloud-examples/refs/heads/main/gke-gclb-misc/base-whereami.yaml
+# kubectl apply -f https://raw.githubusercontent.com/gbrayut/cloud-examples/refs/heads/main/gke-gclb-misc/base-whereami-spread.yaml
+# kubectl apply -f https://raw.githubusercontent.com/gbrayut/cloud-examples/refs/heads/main/gke-gclb-misc/test-gatewayapi-managed.yaml
+
+# kubectl get pod,svc,gateway -n test-gclb 
+# kubectl get events -n test-gclb
+# kubectl describe gtw -n test-gclb whereami-lb-managed 
