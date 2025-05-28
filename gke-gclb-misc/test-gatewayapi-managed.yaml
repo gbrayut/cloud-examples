@@ -40,6 +40,26 @@ spec:
   #hostnames:
   #- "*.example.com"
   rules:    # More examples at https://gateway-api.sigs.k8s.io/api-types/httproute/#backendrefs-optional
+
+  # Using "method: GET" in a match is not supported and will result in GWCER104 error message
+  # kubectl describe gtw -n test-gclb whereami-lb-managed
+  # Events or check https://console.cloud.google.com/kubernetes/gateways
+  # Warning SYNC 86s sc-gateway-controller  failed to translate Gateway "test-gclb/whereami-lb-managed": Error GWCER104: HTTPRoute "test-gclb/whereami-route-managed" is misconfigured, err: Matching by method is not supported, expected empty method, got "GET".
+
+  # Using queryParams Exact or RegularExpression is accepted but the GCLB routeRules it generates are incorrect. Just "- prefixMatch: /" without any queryParameterMatches values
+  # Looks like Query Parameters are not supported on GKE Gateway API https://cloud.google.com/kubernetes-engine/docs/how-to/gatewayclass-capabilities#spec-rules
+  #- matches:
+  #  - queryParams:
+  #    - type: Exact
+  #      name: spread
+  #      value: "disabled"
+  #    #- type: RegularExpression
+  #    #  name: regex
+  #    #  value: "no-spread-.*"
+  #  backendRefs:
+  #  - name: whereami
+  #    port: 80
+
   # Send /no-spread* requests to gke-gclb-misc/base-whereami.yaml
   - matches:
     - path:
