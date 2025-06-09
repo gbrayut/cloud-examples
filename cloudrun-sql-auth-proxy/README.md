@@ -4,9 +4,9 @@ Google Cloud Run can use the [Cloud SQL Language Connector](https://cloud.google
 
 ## Cloud SQL Integration for Cloud Run
 
-As of May 2025 the Cloud Run built-in Cloud SQL integration uses the instance's public IP (if available) or uses the Private IP via Serverless VPC Connector or Direct VPC access if the SQL instance does not have a public IP. If you add a public IP to the SQL instance in the future, then Cloud Run will implicitly start using the Public IP.
+As of May 2025 the Cloud Run built-in Cloud SQL integration uses the instance's public IP (if available) or uses the PSA Private IP via Serverless VPC Connector or Direct VPC access if the SQL instance does not have a public IP. If you add a public IP to the SQL instance in the future, then Cloud Run will implicitly start using the Public IP. If you want to connect to a Cloud SQL instance using PSC, you must use the Language Connector or Sidecar proxy (See below).
 
-When you configure the integration using `--add-cloudsql-instances=...` or the Cloud SQL connections section of a Cloud Run revision, it simply adds the `run.googleapis.com/cloudsql-instances: PROJECT-ID:REGION:INSTANCE-NAME` annotation to your service. You will not see the cloud-sql-proxy container or service and will not be able to change any configuration settings. For instance, [auto-iam-authn](https://cloud.google.com/sql/docs/postgres/iam-authentication#auto-iam-auth) is not currently supported when using the managed Cloud Run integraion and instead requires using the sidecar version.
+When you configure the integration using `--add-cloudsql-instances=...` or the Cloud SQL connections section of a Cloud Run revision, it simply adds the `run.googleapis.com/cloudsql-instances: PROJECT-ID:REGION:INSTANCE-NAME` annotation to your service. You will not see the cloud-sql-proxy container or service and will not be able to change any configuration settings. For instance, [auto-iam-authn](https://cloud.google.com/sql/docs/postgres/iam-authentication#auto-iam-auth) and PSC are not currently supported when using the managed Cloud Run integraion and instead requires using the sidecar version.
 
 The following example is based on [GoogleCloudPlatform/python-docs-samples](https://github.com/GoogleCloudPlatform/python-docs-samples/blob/main/cloud-sql/mysql/sqlalchemy/README.md#deploy-to-cloud-run) and shows how to configure a Python service with SQLAlchemy to securely connect to Mysql using the built-in Cloud SQL integration.
 
@@ -24,6 +24,7 @@ gcloud sql instances create test-instance --project=$PROJECT_ID \
 CLOUDSQL_NAME="$PROJECT_ID:us-central1:test-instance"
 
 # Create named superuser https://cloud.google.com/sdk/gcloud/reference/sql/users/create
+# This also grants the permissions required to login and create new tables
 PASSWORD=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 16)
 gcloud sql users create test-user --instance="test-instance" --project=$PROJECT_ID \
     --password="$PASSWORD" --type="BUILT_IN" --host='%'
@@ -98,9 +99,7 @@ gcloud beta iap web add-iam-policy-binding --region us-central1 --project=$PROJE
 
 ## Cloud Run with Direct VPC, Auth Proxy Sidecar, and Cloud SQL via Private IP
 
-Here is a more elaborate example with Cloud Run [private networking](https://cloud.google.com/run/docs/securing/private-networking), specifically [Direct VPC egress](https://cloud.google.com/run/docs/configuring/vpc-direct-vpc) although the [Serverless VPC Connector](https://cloud.google.com/run/docs/configuring/connecting-vpc#connectors) would also work. This also shows how to configure the SQL Auth Proxy as a sidecar, and configure Cloud SQL to only use a private ip.
-
-The following example is based on [GoogleCloudPlatform/python-docs-samples](https://github.com/GoogleCloudPlatform/python-docs-samples/blob/main/cloud-sql/mysql/sqlalchemy/README.md#deploy-to-cloud-run) and shows how to configure a Python service with SQLAlchemy to securely connect to Mysql using the built-in Cloud SQL integration.
+Here is a more elaborate example with Cloud Run [private networking](https://cloud.google.com/run/docs/securing/private-networking), specifically [Direct VPC egress](https://cloud.google.com/run/docs/configuring/vpc-direct-vpc) although the [Serverless VPC Connector](https://cloud.google.com/run/docs/configuring/connecting-vpc#connectors) would also work. This also shows how to configure the SQL Auth Proxy as a sidecar, and configure Cloud SQL to only use a private ip (PSA or PSC).
 
 ```bash
 PROJECT_ID=gregbray-run
@@ -114,7 +113,7 @@ gcloud compute networks subnets create cloud-run-demo-subnet \
     --network "projects/$PROJECT_ID/global/networks/demo-vpc" \
     --region us-central1 --range 10.0.100.0/24 --enable-private-ip-google-access
 
-# Create static addressess range and Service Networking peering
+# Create static addressess range and Service Networking peering for PSA
 gcloud compute addresses create google-service-networking-subnet \
     --global --purpose=VPC_PEERING --addresses=10.60.0.0 --prefix-length=20  \
     --network="projects/$PROJECT_ID/global/networks/demo-vpc" \
@@ -129,12 +128,13 @@ gcloud services vpc-peerings connect --project $PROJECT_ID \
 gcloud sql instances create psa-instance --project=$PROJECT_ID --region=us-central1 \
     --tier=db-g1-small --database-version=MYSQL_8_0 --edition=ENTERPRISE \
     --no-assign-ip --connector-enforcement="REQUIRED" \
-    --network="demo-vpc"
+    --network="demo-vpc" --ssl-mode="ENCRYPTED_ONLY"
 # for IAM based auth (see below) add --database-flags="cloudsql_iam_authentication=On"
 
 PSASQL_NAME="$PROJECT_ID:us-central1:psa-instance"
 
 # Create named superuser https://cloud.google.com/sdk/gcloud/reference/sql/users/create
+# This also grants the permissions required to login and create new tables
 PASSWORD=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 16)
 gcloud sql users create test-user --instance="psa-instance" --project=$PROJECT_ID \
     --password="$PASSWORD" --type="BUILT_IN" --host='%'
@@ -161,7 +161,6 @@ gcloud builds submit --default-buckets-behavior="regional-user-owned-bucket" \
 gcloud beta run deploy cloud-sql-vpc-demo --region us-central1 --project=$PROJECT_ID \
     --iap --no-allow-unauthenticated --vpc-egress="all-traffic" \
     --network="demo-vpc" --subnet="projects/${PROJECT_ID}/regions/us-central1/subnetworks/cloud-run-demo-subnet" \
-    --add-cloudsql-instances="$PSASQL_NAME" \
     --service-account="cloud-sql-demo@$PROJECT_ID.iam.gserviceaccount.com" \
     --container demo --image="us-central1-docker.pkg.dev/$PROJECT_ID/tabs-vs-spaces/demo" \
     --set-env-vars INSTANCE_HOST=127.0.0.1,DB_PORT=3306 \
@@ -197,7 +196,7 @@ gcloud network-connectivity service-connection-policies create cloud-sql-policy 
 # https://cloud.google.com/sdk/gcloud/reference/sql/instances/create
 gcloud sql instances create psc-instance --project=$PROJECT_ID --region=us-central1 \
     --tier=db-g1-small --database-version=MYSQL_8_0 --edition=ENTERPRISE \
-    --no-assign-ip --connector-enforcement="REQUIRED" \
+    --no-assign-ip --connector-enforcement="REQUIRED" --ssl-mode="ENCRYPTED_ONLY" \
     --database-flags="cloudsql_iam_authentication=On" \
     --psc-auto-connections=project=$PROJECT_ID,network=projects/$PROJECT_ID/global/networks/demo-vpc \
     --enable-private-service-connect --allowed-psc-projects="$PROJECT_ID"
@@ -222,11 +221,12 @@ PSCSQL_NAME="$PROJECT_ID:us-central1:psc-instance"
 # https://cloud.google.com/sql/docs/mysql/iam-authentication
 # and https://github.com/GoogleCloudPlatform/cloud-sql-proxy/tree/main?tab=readme-ov-file#configuring-iam-database-authentication
 
-Todo: add missing IAM role grant
+Todo: create database, and add missing IAM role grant
 and "GRANT `cloudsqlsuperuser`@`%` TO `cloud-sql-demo`@`%`"
 and "GRANT ALL PRIVILEGES ON `test-db`.* TO 'cloud-sql-demo'@'%'"
 
 # Create named superuser https://cloud.google.com/sdk/gcloud/reference/sql/users/create
+# NOTE: This does NOT grant login or table creation permissions like it does for built-in users
 gcloud sql users create "cloud-sql-demo@$PROJECT_ID.iam.gserviceaccount.com" --project=$PROJECT_ID \
     --instance="psc-instance" --type="CLOUD_IAM_SERVICE_ACCOUNT"
 
