@@ -30,10 +30,6 @@ gcloud sql users create test-user --instance="test-instance" --project=$PROJECT_
 
 gcloud sql databases create test-db --instance="test-instance" --project=$PROJECT_ID
 
-# Clone and Deploy Cloud Run service
-git clone https://github.com/GoogleCloudPlatform/python-docs-samples.git
-cd python-docs-samples/cloud-sql/mysql/sqlalchemy/
-
 # Configure Google Service Accounts and Deploy from source permissions
 # https://cloud.google.com/run/docs/deploying-source-code
 gcloud iam service-accounts create cloud-sql-demo --project=$PROJECT_ID \
@@ -49,6 +45,15 @@ gcloud iam service-accounts create my-build-account --project=$PROJECT_ID \
 gcloud projects add-iam-policy-binding $PROJECT_ID \
       --member="serviceAccount:my-build-account@$PROJECT_ID.iam.gserviceaccount.com" \
       --role="roles/run.builder"
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+      --member="serviceAccount:my-build-account@$PROJECT_ID.iam.gserviceaccount.com" \
+      --role="roles/storage.admin"
+```
+
+#### Clone and Deploy Cloud Run service
+```shell
+git clone https://github.com/GoogleCloudPlatform/python-docs-samples.git
+cd python-docs-samples/cloud-sql/mysql/sqlalchemy/
 
 # Cloud Run with SQL Connector https://cloud.google.com/sql/docs/mysql/connect-run
 # add-cloudsql-instances just adds run.googleapis.com/cloudsql-instances annotation
@@ -125,11 +130,7 @@ gcloud sql instances create psa-instance --project=$PROJECT_ID --region=us-centr
     --tier=db-g1-small --database-version=MYSQL_8_0 --edition=ENTERPRISE \
     --no-assign-ip --connector-enforcement="REQUIRED" \
     --network="demo-vpc"
-
-
-
-
-
+# for IAM based auth (see below) add --database-flags="cloudsql_iam_authentication=On"
 
 PSASQL_NAME="$PROJECT_ID:us-central1:psa-instance"
 
@@ -138,15 +139,37 @@ PASSWORD=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 16)
 gcloud sql users create test-user --instance="psa-instance" --project=$PROJECT_ID \
     --password="$PASSWORD" --type="BUILT_IN" --host='%'
 gcloud sql databases create test-db --instance="psa-instance" --project=$PROJECT_ID
+```
 
+#### Cloud Run Multi Container Deployment
+```shell
+# This time instead of deploy from source we'll build to and deploy from Artifact Registry
+gcloud artifacts repositories create tabs-vs-spaces --project=$PROJECT_ID \
+      --repository-format=docker \
+      --location=us-central1
+
+cd python-docs-samples/cloud-sql/mysql/sqlalchemy/
+# https://cloud.google.com/sdk/gcloud/reference/builds/submit
+gcloud builds submit --default-buckets-behavior="regional-user-owned-bucket" \
+    --service-account="projects/$PROJECT_ID/serviceAccounts/my-build-account@$PROJECT_ID.iam.gserviceaccount.com" \
+    --tag us-central1-docker.pkg.dev/$PROJECT_ID/tabs-vs-spaces/demo
+
+
+
+# Deploy cloud run multi-container service
+# See proxy options at https://github.com/GoogleCloudPlatform/cloud-sql-proxy/tree/main?tab=readme-ov-file#basic-usage
 gcloud beta run deploy cloud-sql-vpc-demo --region us-central1 --project=$PROJECT_ID \
-    --source . --iap --no-allow-unauthenticated --vpc-egress="all-traffic" \
+    --iap --no-allow-unauthenticated --vpc-egress="all-traffic" \
     --network="demo-vpc" --subnet="projects/${PROJECT_ID}/regions/us-central1/subnetworks/cloud-run-demo-subnet" \
     --add-cloudsql-instances="$PSASQL_NAME" \
     --service-account="cloud-sql-demo@$PROJECT_ID.iam.gserviceaccount.com" \
-    --build-service-account="projects/$PROJECT_ID/serviceAccounts/my-build-account@$PROJECT_ID.iam.gserviceaccount.com" \
-    --set-env-vars INSTANCE_UNIX_SOCKET=/cloudsql/$PSASQL_NAME \
-    --set-env-vars DB_USER='test-user',DB_PASS=$PASSWORD,DB_NAME='test-db'
+    --container demo --image="us-central1-docker.pkg.dev/$PROJECT_ID/tabs-vs-spaces/demo" \
+    --set-env-vars INSTANCE_HOST=127.0.0.1,DB_PORT=3306 \
+    --set-env-vars DB_USER='test-user',DB_PASS=$PASSWORD,DB_NAME='test-db' \
+    --port 8080 \
+    --container sql-proxy \
+    --image="gcr.io/cloud-sql-connectors/cloud-sql-proxy:latest" \
+    --args="--private-ip,$PSASQL_NAME"
 
 # This time use Conditional IAM to grant IAP access to all cloud-sql-vpc-demo deployments in any region
 # https://cloud.google.com/iap/docs/managing-access#resources_and_permissions
@@ -163,5 +186,98 @@ expression: |-
   request.host.startsWith('cloud-sql-vpc-demo')
 END
 )
+```
+#### Cloud SQL using PSC instead of PSA
+```shell
+# Instead of PSA (Peering) this instance uses Private Service Connect (PSC) for private access
+# https://cloud.google.com/sql/docs/mysql/configure-private-service-connect
+gcloud network-connectivity service-connection-policies create cloud-sql-policy --project=$PROJECT_ID \
+    --network=demo-vpc --region=us-central1 --service-class=google-cloud-sql \
+    --subnets=cloud-run-demo-subnet --psc-connection-limit=10
+# https://cloud.google.com/sdk/gcloud/reference/sql/instances/create
+gcloud sql instances create psc-instance --project=$PROJECT_ID --region=us-central1 \
+    --tier=db-g1-small --database-version=MYSQL_8_0 --edition=ENTERPRISE \
+    --no-assign-ip --connector-enforcement="REQUIRED" \
+    --database-flags="cloudsql_iam_authentication=On" \
+    --psc-auto-connections=project=$PROJECT_ID,network=projects/$PROJECT_ID/global/networks/demo-vpc \
+    --enable-private-service-connect --allowed-psc-projects="$PROJECT_ID"
 
+# Verify PSC attachment was created and private IP assigned
+gcloud sql instances describe psc-instance --project=$PROJECT_ID \
+   --format='json(settings.ipConfiguration.pscConfig.pscAutoConnections)'
+
+PSC_DNS_RECORD='717f434e8cc7.g9nierdwkxom.us-central1.sql.goog'
+PSC_IP='10.0.100.2'
+
+# https://cloud.google.com/sql/docs/mysql/configure-private-service-connect#configure-dns
+gcloud dns managed-zones create mycloudsql --project=$PROJECT_ID \
+    --networks="demo-vpc" --visibility=private \
+    --description="DNS zone for Cloud SQL instances" \
+    --dns-name="us-central1.sql.goog"
+gcloud dns record-sets create $PSC_DNS_RECORD --project=$PROJECT_ID \
+    --zone=mycloudsql --type="A" --rrdatas=$PSC_IP
+
+PSCSQL_NAME="$PROJECT_ID:us-central1:psc-instance"
+
+# https://cloud.google.com/sql/docs/mysql/iam-authentication
+# and https://github.com/GoogleCloudPlatform/cloud-sql-proxy/tree/main?tab=readme-ov-file#configuring-iam-database-authentication
+
+Todo: add missing IAM role grant
+and "GRANT `cloudsqlsuperuser`@`%` TO `cloud-sql-demo`@`%`"
+and "GRANT ALL PRIVILEGES ON `test-db`.* TO 'cloud-sql-demo'@'%'"
+
+# Create named superuser https://cloud.google.com/sdk/gcloud/reference/sql/users/create
+gcloud sql users create "cloud-sql-demo@$PROJECT_ID.iam.gserviceaccount.com" --project=$PROJECT_ID \
+    --instance="psc-instance" --type="CLOUD_IAM_SERVICE_ACCOUNT"
+
+# Deploy cloud run multi-container service
+# See proxy options at https://github.com/GoogleCloudPlatform/cloud-sql-proxy/tree/main?tab=readme-ov-file#basic-usage
+gcloud beta run deploy cloud-sql-vpc-demo --region us-central1 --project=$PROJECT_ID \
+    --iap --no-allow-unauthenticated --vpc-egress="all-traffic" \
+    --network="demo-vpc" --subnet="projects/${PROJECT_ID}/regions/us-central1/subnetworks/cloud-run-demo-subnet" \
+    --service-account="cloud-sql-demo@$PROJECT_ID.iam.gserviceaccount.com" \
+    --container demo --image="us-central1-docker.pkg.dev/$PROJECT_ID/tabs-vs-spaces/demo" \
+    --set-env-vars INSTANCE_HOST=127.0.0.1,DB_PORT=3306 \
+    --set-env-vars DB_USER=cloud-sql-demo,DB_PASS=DOESNOTMATTER,DB_NAME=test-db \
+    --port 8080 \
+    --container sql-proxy \
+    --image="gcr.io/cloud-sql-connectors/cloud-sql-proxy:latest" \
+    --cpu="0.3" --memory="512Mi" \
+    --args="--auto-iam-authn,--psc,$PSCSQL_NAME"
+```
+
+# Troubleshooting
+
+View container logs using [Cloud Logging](https://console.cloud.google.com/logs/query;query=resource.labels.service_name%20%3D%20%22cloud-sql-vpc-demo%22%0A-labels.container_name%20%3D%20%22sql-proxy%22)
+
+Remove "-" prefix from container_name to switch from exclusion to only those logs.
+```
+resource.type = "cloud_run_revision"
+resource.labels.service_name = "cloud-sql-vpc-demo"
+-labels.container_name = "sql-proxy"
+severity>=DEFAULT
+```
+
+Test Cloud SQL Proxy using GCE Instance
+```shell
+gcloud compute instances create test-vm --project=gregbray-run \
+  --zone=us-central1-c --machine-type=e2-custom-2-6400 \
+  --network-interface "nic-type=GVNIC,network=demo-vpc,subnet=cloud-run-demo-subnet" \
+  --image-family=ubuntu-2410-amd64 --image-project=ubuntu-os-cloud \
+  --boot-disk-size=10GB --boot-disk-type=pd-standard \
+  --shielded-vtpm --shielded-integrity-monitoring \
+  --service-account="cloud-sql-demo@$PROJECT_ID.iam.gserviceaccount.com" \
+  --scopes=https://www.googleapis.com/auth/cloud-platform
+
+gcloud compute ssh test-vm
+
+sudo apt install mysql-client-core-8.0
+# https://github.com/GoogleCloudPlatform/cloud-sql-proxy
+URL="https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.16.0"
+curl "$URL/cloud-sql-proxy.linux.amd64" -o cloud-sql-proxy
+chmod +x cloud-sql-proxy
+./cloud-sql-proxy --auto-iam-authn --psc gregbray-run:us-central1:psc-instance
+# or add ?address=0.0.0.0 at the end to listen on all local IPs
+
+mysql --verbose --host=127.0.0.1 --user=cloud-sql-demo
 ```
