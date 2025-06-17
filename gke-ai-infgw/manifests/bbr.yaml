@@ -1,0 +1,94 @@
+---
+# Source: body-based-routing/templates/bbr.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: body-based-router
+  namespace: gemma
+spec:
+  selector:
+    app: body-based-router
+  ports:
+  - protocol: TCP
+    port: 9004
+    targetPort: 9004
+    appProtocol: HTTP2
+  type: ClusterIP
+---
+# Source: body-based-routing/templates/bbr.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: body-based-router
+  namespace: gemma
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: body-based-router
+  template:
+    metadata:
+      labels:
+        app: body-based-router
+    spec:
+      containers:
+      - name: bbr
+        image: registry.k8s.io/gateway-api-inference-extension/bbr:v0.4.0
+        imagePullPolicy: Always
+        args:
+        - "-streaming"
+        - "-v"
+        - "3"
+        ports:
+        - containerPort: 9004
+        # health check
+        - containerPort: 9005
+---
+# Source: body-based-routing/templates/gke.yaml
+kind: GCPRoutingExtension
+apiVersion: networking.gke.io/v1
+metadata:
+  name: body-based-router
+  namespace: gemma
+spec:
+  targetRefs:
+  - group: "gateway.networking.k8s.io"
+    kind: Gateway
+    name: vllm-xlb
+  extensionChains:
+  - name: chain1
+    extensions:
+    - name: ext1
+      authority: "myext.com"
+      timeout: 1s
+      supportedEvents:
+      - RequestHeaders
+      - RequestBody
+      - RequestTrailers
+      requestBodySendMode: "FullDuplexStreamed"
+      backendRef:
+        group: ""
+        kind: Service
+        name: body-based-router
+        port: 9004
+---
+# Source: body-based-routing/templates/gke.yaml
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: bbr-healthcheck
+  namespace: gemma
+spec:
+  default:
+    logConfig:
+      enabled: true
+    config:
+      type: "GRPC"
+      grpcHealthCheck:
+        portSpecification: "USE_FIXED_PORT"
+        port: 9005
+  targetRef:
+    group: ""
+    kind: Service
+    name: body-based-router
+    namespace: gemma

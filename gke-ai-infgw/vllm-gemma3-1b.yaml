@@ -1,0 +1,104 @@
+# Based on https://cloud.google.com/kubernetes-engine/docs/tutorials/serve-gemma-gpu-vllm#deploy-vllm
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-gemma-3-1b
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-gemma-3-1b
+  strategy:
+    type: Recreate  # Use this for faster updates when troubleshooting (but not in production)
+  template:
+    metadata:
+      labels:
+        app: vllm-gemma-3-1b
+    spec:
+      serviceAccountName: default
+      terminationGracePeriodSeconds: 15  # again faster troubleshooting but production should have better drain time
+      containers:
+        - name: inference-server
+          image: vllm/vllm-openai:v0.8.5.post1  #v0.9.0 and newer have RuntimeError: Failed to infer device type
+          resources:
+            requests:
+              cpu: "6"
+              memory: "25Gi"
+              ephemeral-storage: 10Gi
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "6"
+              memory: "25Gi"
+              ephemeral-storage: 10Gi
+              nvidia.com/gpu: "1"
+          # kubectl exec -t -n gemma deploy/vllm-gemma-3-1b -- vllm serve --help
+          args:
+            - --model=$(MODEL)
+            - --tensor-parallel-size=1
+          # https://docs.vllm.ai/en/latest/configuration/env_vars.html
+          env:
+            #- name: VLLM_LOGGING_LEVEL
+            #  value: DEBUG  # for troubleshooting RuntimeError: Failed to infer device type
+            - name: MODEL
+              value: google/gemma-3-1b-it
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: hf_api_token
+          volumeMounts:
+            - mountPath: /dev/shm
+              name: dshm
+          ports:
+            - containerPort: 8000
+              name: http
+              protocol: TCP
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 15   # Helps drain connections
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+              scheme: HTTP
+            periodSeconds: 1
+            successThreshold: 1
+            failureThreshold: 5
+            timeoutSeconds: 1
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+              scheme: HTTP
+            periodSeconds: 1
+            successThreshold: 1
+            failureThreshold: 1
+            timeoutSeconds: 1
+          startupProbe:
+            failureThreshold: 3600
+            initialDelaySeconds: 2
+            periodSeconds: 1
+            httpGet:
+              path: /health
+              port: http
+              scheme: HTTP
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-l4
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-gemma-3-1b
+spec:
+  selector:
+    app: vllm-gemma-3-1b
+  type: ClusterIP
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000

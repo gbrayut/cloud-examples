@@ -1,0 +1,213 @@
+---
+# Source: inferencepool/templates/rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: release-name-epp
+  namespace: gemma
+  labels:
+    app.kubernetes.io/name: release-name-epp
+    app.kubernetes.io/version: "v0.4.0"
+---
+# Source: inferencepool/templates/rbac.yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: release-name-epp
+  labels:
+    app.kubernetes.io/name: release-name-epp
+    app.kubernetes.io/version: "v0.4.0"
+rules:
+- apiGroups: ["inference.networking.x-k8s.io"]
+  resources: ["inferencemodels", "inferencepools"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "watch", "list"]
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+---
+# Source: inferencepool/templates/rbac.yaml
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: release-name-epp
+subjects:
+- kind: ServiceAccount
+  name: release-name-epp
+  namespace: gemma
+roleRef:
+  kind: ClusterRole
+  name: release-name-epp
+---
+# Source: inferencepool/templates/epp-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: release-name-epp
+  namespace: gemma
+  labels:
+    app.kubernetes.io/name: release-name-epp
+    app.kubernetes.io/version: "v0.4.0"
+spec:
+  selector:
+    inferencepool: release-name-epp
+  ports:
+    - name: grpc-ext-proc
+      protocol: TCP
+      port: 9002
+    - name: http-metrics
+      protocol: TCP
+      port: 9090
+  type: ClusterIP
+---
+# Source: inferencepool/templates/epp-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: release-name-epp
+  namespace: gemma
+  labels:
+    app.kubernetes.io/name: release-name-epp
+    app.kubernetes.io/version: "v0.4.0"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      inferencepool: release-name-epp
+  template:
+    metadata:
+      labels:
+        inferencepool: release-name-epp
+    spec:
+      serviceAccountName: release-name-epp
+      # Conservatively, this timeout should mirror the longest grace period of the pods within the pool
+      terminationGracePeriodSeconds: 130
+      containers:
+      - name: epp
+        image: registry.k8s.io/gateway-api-inference-extension/epp:v0.4.0
+        imagePullPolicy: Always
+        args:
+        - -poolName
+        - release-name
+        - -poolNamespace
+        - gemma
+        - -v
+        - "3"
+        - -grpcPort
+        - "9002"
+        - -grpcHealthPort
+        - "9003"
+        - -metricsPort
+        - "9090"
+        ports:
+        - name: grpc
+          containerPort: 9002
+        - name: grpc-health
+          containerPort: 9003
+        - name: metrics
+          containerPort: 9090
+        livenessProbe:
+          grpc:
+            port: 9003
+            service: inference-extension
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          grpc:
+            port: 9003
+            service: inference-extension
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        env:
+---
+# Source: inferencepool/templates/gke.yaml
+apiVersion: monitoring.googleapis.com/v1
+kind: ClusterPodMonitoring
+metadata:
+  name: gemma-release-name
+  labels:
+    app.kubernetes.io/name: release-name-epp
+    app.kubernetes.io/version: "v0.4.0"
+spec:
+  endpoints:
+  - port: metrics
+    scheme: http
+    interval: 5s
+    path: /metrics
+    authorization:
+      type: Bearer
+      credentials:
+        secret:
+          name: inference-gateway-sa-metrics-reader-secret
+          key: token
+          namespace: default
+  selector:
+    matchLabels:
+        inferencepool: release-name-epp
+---
+# Source: inferencepool/templates/gke.yaml
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: release-name
+  namespace: gemma
+  labels:
+    app.kubernetes.io/name: release-name-epp
+    app.kubernetes.io/version: "v0.4.0"
+spec:
+  targetRef:
+    group: "inference.networking.x-k8s.io"
+    kind: InferencePool
+    name: release-name
+  default:
+    timeoutSec: 300    # 5-minute timeout (adjust as needed)
+    logging:
+      enabled: true    # log all requests by default
+---
+# Source: inferencepool/templates/gke.yaml
+kind: HealthCheckPolicy
+apiVersion: networking.gke.io/v1
+metadata:
+  name: release-name
+  namespace: gemma
+  labels:
+    app.kubernetes.io/name: release-name-epp
+    app.kubernetes.io/version: "v0.4.0"
+spec:
+  targetRef:
+    group: "inference.networking.x-k8s.io"
+    kind: InferencePool
+    name: release-name
+  default:
+    config:
+      type: HTTP
+      httpHealthCheck:
+          requestPath: /health
+          port:  8000
+---
+# Source: inferencepool/templates/inferencepool.yaml
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferencePool
+metadata:
+  name: release-name
+  namespace: gemma
+  labels:
+    app.kubernetes.io/name: release-name-epp
+    app.kubernetes.io/version: "v0.4.0"
+spec:
+  targetPortNumber: 8000
+  selector:
+    app: ""
+  extensionRef:
+    name: release-name-epp

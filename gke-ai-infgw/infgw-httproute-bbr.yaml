@@ -1,0 +1,61 @@
+# https://gateway-api.sigs.k8s.io/api-types/httproute/
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: bbr-gemma3-1b
+spec:
+  parentRefs:
+    - name: vllm-xlb
+      #sectionName: https  # Only bind on HTTPS listener
+  hostnames:
+    - "bbr.example.com"
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: X-Gateway-Model-Name
+              value: google/gemma-3-1b-it
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: vllm-gemma-3-1b
+          port: 8000
+      filters:
+        # Add response header to see which rule was matched https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways#configure_custom_response_headers
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            add:
+              - name: x-infgw-selected
+                value: bbr-gemma3-1b
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: bbr-gemma3-4b
+spec:
+  parentRefs:
+    - name: vllm-xlb
+      #sectionName: https  # Only bind on HTTPS listener
+  hostnames:
+    - "bbr.example.com"
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: X-Gateway-Model-Name
+              value: google/gemma-3-4b-it
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: vllm-gemma-3-4b
+          port: 8000
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            add:
+              - name: x-infgw-selected
+                value: bbr-gemma3-4b
+
+# Note: this still requires the same HealthCheckPolicy from basic example (vllm-gemma-3-1b-hc and vllm-gemma-3-4b-hc)

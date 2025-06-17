@@ -1,0 +1,52 @@
+# https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: vllm-gemma-3-1b
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: vllm-gemma-3-1b
+  minReplicas: 1
+  maxReplicas: 3
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 60
+  metrics:
+    - type: External
+      external:
+        metric:
+          name: prometheus.googleapis.com|inference_pool_average_kv_cache_utilization|gauge
+          selector:
+            matchLabels:
+              metric.labels.name: vllm-gemma-3-1b
+        target:
+          type: AverageValue
+          averageValue: 10m   # targets 1% usage for demo purposes
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: vllm-gemma-3-4b
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: vllm-gemma-3-4b
+  minReplicas: 1
+  maxReplicas: 3
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 60
+  metrics:
+    - type: External
+      external:
+        metric:
+          name: prometheus.googleapis.com|inference_pool_average_kv_cache_utilization|gauge
+          selector:
+            matchLabels:
+              metric.labels.name: vllm-gemma-3-4b
+        target:
+          type: AverageValue
+          averageValue: 10m

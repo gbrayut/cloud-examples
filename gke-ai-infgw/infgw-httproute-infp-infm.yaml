@@ -1,0 +1,84 @@
+# https://gateway-api-inference-extension.sigs.k8s.io/guides/serve-multiple-genai-models/
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: infp-gemma3-1b
+spec:
+  parentRefs:
+    - name: vllm-xlb
+      #sectionName: https  # Only bind on HTTPS listener
+  hostnames:
+    - "api.example.com"
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: X-Gateway-Model-Name
+              value: google/gemma-3-1b-it
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: vllm-gemma-3-1b
+          group: inference.networking.x-k8s.io
+          kind: InferencePool
+      filters:
+        # Add response header to see which rule was matched https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways#configure_custom_response_headers
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            add:
+              - name: x-infgw-selected
+                value: infp-gemma3-1b
+---
+# https://gateway-api-inference-extension.sigs.k8s.io/reference/spec/#inferencemodel
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferenceModel
+metadata:
+  name: gemma-3-1b-it-hf
+spec:
+  modelName: google/gemma-3-1b-it
+  criticality: Standard
+  poolRef:
+    name: vllm-gemma-3-1b
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: infp-gemma3-4b
+spec:
+  parentRefs:
+    - name: vllm-xlb
+      #sectionName: https  # Only bind on HTTPS listener
+  hostnames:
+    - "api.example.com"
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: X-Gateway-Model-Name
+              value: google/gemma-3-4b-it
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: vllm-gemma-3-4b
+          group: inference.networking.x-k8s.io
+          kind: InferencePool
+      filters:
+        # Add response header to see which rule was matched https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways#configure_custom_response_headers
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            add:
+              - name: x-infgw-selected
+                value: infp-gemma3-4b
+---
+# https://gateway-api-inference-extension.sigs.k8s.io/reference/spec/#inferencemodel
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferenceModel
+metadata:
+  name: gemma-3-4b-it-hf
+spec:
+  modelName: google/gemma-3-4b-it
+  criticality: Critical
+  poolRef:
+    name: vllm-gemma-3-4b
