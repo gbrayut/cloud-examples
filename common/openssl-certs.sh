@@ -29,11 +29,17 @@ openssl x509 -req -signkey example_certs/star.pem -in example_certs/star.csr \
   -out example_certs/star.crt -extfile example_certs/star-example.conf \
   -extensions extension_requirements -days 365
 
-# Upload for use in GCLB
+# Upload for use in global GCLB
 gcloud compute ssl-certificates create star-example-com \
   --certificate=example_certs/star.crt --private-key=example_certs/star.pem \
   --global --project my-gcp-project
 
-# Upload to GKE for use in istio-ingressgateway (Must be same namespace as gateway)
+# Or upload to GKE cluster for use in istio-ingressgateway (Must be same namespace as gateway deployment)
 kubectl create -n istio-ingress secret tls shared-istio-gw-wildcard-cert \
   --key=example_certs/star.pem --cert=example_certs/star.crt
+
+# Or create a Regional Certificate Map for use in Regional ALB / Inference Gateway
+gcloud certificate-manager certificates create uc1-wildcard \
+    --certificate-file=./example_certs/star.crt \
+    --private-key-file=./example_certs/star.pem" \
+    --location="us-central1"

@@ -1,0 +1,87 @@
+# force HTTP to HTTPS redirect https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways#redirect_http_traffic_from_the_gateway_namespace
+#kind: HTTPRoute
+#apiVersion: gateway.networking.k8s.io/v1
+#metadata:
+#  name: http-to-https-redirect
+#spec:
+#  parentRefs:
+#  - name: vllm-xlb
+#    sectionName: http
+#  rules:
+#  - filters:
+#    - type: RequestRedirect
+#      requestRedirect:
+#        scheme: https
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gemma-host-based-routing
+spec:
+  parentRefs:
+    - name: vllm-xlb
+      #sectionName: https  # Only bind on HTTPS listener
+  hostnames:    # See: kubectl explain httproute.spec.hostnames
+    - "1b.example.com"
+    - "4b.example.com"
+    #- "*.example.com"   # Can also use wildcard instead of individual entries
+  rules:
+    # Check host header and route 4b to that service
+    - matches:
+      - headers:
+        - name: host
+          value: 4b.example.com
+      backendRefs:
+        - name: vllm-gemma-3-4b
+          port: 8000
+    # Default to 1b model
+    - backendRefs:
+        - name: vllm-gemma-3-1b
+          port: 8000
+---
+# Configure health checks for vllm deployments as the default "/" path in vllm returns a 404
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: vllm-gemma-3-1b-hc
+spec:
+  default:
+    checkIntervalSec: 15
+    timeoutSec: 15
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    logConfig:  # Find in Log Explorer using logName="projects/<projectname>/logs/compute.googleapis.com%2Fhealthchecks"
+      enabled: False  # Usually only need to enable during initial troubleshooting
+    config:   # https://cloud.google.com/load-balancing/docs/features#health-checks for which checks are supported
+      type: HTTP
+      # see also: kubectl explain HealthCheckPolicy.spec.default.config and https://cloud.google.com/compute/docs/reference/rest/v1/healthChecks
+      httpHealthCheck:
+        port: 8000
+        requestPath: /health
+  targetRef:
+    group: ""
+    kind: Service
+    name: vllm-gemma-3-1b
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: vllm-gemma-3-4b-hc
+spec:
+  default:
+    checkIntervalSec: 15
+    timeoutSec: 15
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    logConfig:  # Find in Log Explorer using logName="projects/<projectname>/logs/compute.googleapis.com%2Fhealthchecks"
+      enabled: False  # Usually only need to enable during initial troubleshooting
+    config:   # https://cloud.google.com/load-balancing/docs/features#health-checks for which checks are supported
+      type: HTTP
+      # see also: kubectl explain HealthCheckPolicy.spec.default.config and https://cloud.google.com/compute/docs/reference/rest/v1/healthChecks
+      httpHealthCheck:
+        port: 8000
+        requestPath: /health
+  targetRef:
+    group: ""
+    kind: Service
+    name: vllm-gemma-3-4b

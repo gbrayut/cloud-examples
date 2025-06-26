@@ -1,0 +1,28 @@
+# GKE Regional External ALB used for Inference Gateway
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: vllm-xlb
+  annotations:
+    # Assign certs via Certificate Manager https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-certificate-manager
+    #networking.gke.io/certmap: gke-gateway-map   # These only work for Global ALB
+spec:
+  gatewayClassName: gke-l7-regional-external-managed # Or gke-l7-rilb for internal ALB
+  listeners:
+    - protocol: HTTP
+      port: 80
+      name: http
+    # Comment the above or below section out if you only want HTTP or HTTPS listeners
+    - name: https
+      protocol: HTTPS
+      port: 443
+      # Regional LB certificate https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#regional-gateway
+      tls:
+        mode: Terminate    # Must terminate, Passthrough only supported on a few GCLB classes
+        options: 
+          networking.gke.io/cert-manager-certs: uc1-wildcard    # Can specify multiple comma separted certs for SNI based SAN matching
+
+  # Static address for gateway https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways#create_a_regional_external_https_gateway
+  #addresses:
+  #- type: NamedAddress
+  #  value: gateway-static-ip
