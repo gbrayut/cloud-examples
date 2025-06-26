@@ -18,7 +18,7 @@ PROJECT_ID=my-project
 PROJECT_NUM=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
 CLUSTER_NAME=my-gke-cluster
 HF_TOKEN=hf_12345REDACTED   # Hugging Face user must accept the Gemma license linked above.
-BASE=https://github.com/gbrayut/cloud-examples/raw/refs/heads/main/gke-ai-infgw   # Or use local path to cloned repo
+BASE=https://raw.githubusercontent.com/gbrayut/cloud-examples/refs/heads/main/gke-ai-infgw    # Or use local path to cloned repo
 
 # Add gpu node pool. See https://cloud.google.com/kubernetes-engine/docs/tutorials/serve-gemma-gpu-vllm#create-cluster
 # each g2-standard-8 has one L4 GPU with 24GB GDDR6, 8 vCPU, 32GB RAM, and costs ~$2 an hour
