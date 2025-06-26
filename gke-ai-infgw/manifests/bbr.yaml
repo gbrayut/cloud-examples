@@ -45,6 +45,7 @@ spec:
         - containerPort: 9005
 ---
 # Source: body-based-routing/templates/gke.yaml
+# https://github.com/GoogleCloudPlatform/gke-gateway-api/blob/main/config/crd/networking.gke.io_gcproutingextensions.yaml
 kind: GCPRoutingExtension
 apiVersion: networking.gke.io/v1
 metadata:

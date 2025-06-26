@@ -1,17 +1,19 @@
 # GKE Inference Gateway
 
-[Gateway API Inference Extension](https://gateway-api-inference-extension.sigs.k8s.io/) is an official Kubernetes project in alpha 0.4 status that optimizes self-hosting Generative Models on Kubernetes. It supports creating a unified inference endpoint (based on OpenAI Completion and Chat Completion APIs) that can [serve multiple models](https://gateway-api-inference-extension.sigs.k8s.io/guides/serve-multiple-genai-models/) or use a single inference deployment with [LoRA adapters](https://gateway-api-inference-extension.sigs.k8s.io/guides/serve-multiple-lora-adapters/) for different inference use cases. The [Implementer's Guide](https://gateway-api-inference-extension.sigs.k8s.io/guides/implementers/) provides a good overview of how things work (project is gaining traction across multiple Gateway providers), and is creating [new releases](https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases) on a quick cadence with and aggressive [roadmap](https://kubernetes.io/blog/2025/06/05/introducing-gateway-api-inference-extension/) (similar to the early days of Gateway API).
+[Gateway API Inference Extension](https://gateway-api-inference-extension.sigs.k8s.io/) is an official Kubernetes project in alpha 0.4 status (as of June 2025) that optimizes serving Generative Models on Kubernetes. It allows you to create a unified [inferencing endpoint](https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/main/docs/proposals/003-model-server-protocol/README.md) (based on OpenAI's Completions and Chat APIs) that can [serve multiple models](https://gateway-api-inference-extension.sigs.k8s.io/guides/serve-multiple-genai-models/) or use a single deployment with [LoRA adapters](https://gateway-api-inference-extension.sigs.k8s.io/guides/serve-multiple-lora-adapters/) for different inference use cases. The [Implementer's Guide](https://gateway-api-inference-extension.sigs.k8s.io/guides/implementers/) provides a good overview of how things work (project is gaining traction across [multiple Gateway providers](https://gateway-api-inference-extension.sigs.k8s.io/implementations/gateways/)), and they are creating [new releases](https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases) on a quick cadence with an aggressive [roadmap](https://kubernetes.io/blog/2025/06/05/introducing-gateway-api-inference-extension/#roadmap) (similar to the early days of Gateway API).
 
-[GKE Inference Gateway](https://cloud.google.com/kubernetes-engine/docs/concepts/about-gke-inference-gateway) is a preview enancement of the existing regional external (gke-l7-regional-external-managed) or internal ALB (gke-l7-rilb) GatewayClass resources. This example will focus on vLLM inference server but Triton is also supported.
+[GKE Inference Gateway](https://cloud.google.com/kubernetes-engine/docs/concepts/about-gke-inference-gateway) is a preview enhancement of the existing regional external (gke-l7-regional-external-managed) or internal ALB (gke-l7-rilb) GatewayClass resources. This example will focus on Gemma 3 models using the vLLM inference server but [Triton](https://gateway-api-inference-extension.sigs.k8s.io/implementations/model-servers/) is also supported.
 
 ![infgw body based routing](https://gateway-api-inference-extension.sigs.k8s.io/images/serve-mul-gen-AI-models.png)
 
 # Example Cluster Setup
 
-This setup follows the [Gemma on GKE with vLLM](https://cloud.google.com/kubernetes-engine/docs/tutorials/serve-gemma-gpu-vllm) guide, requires a [Hugging Face token](https://huggingface.co/docs/hub/security-tokens), and your HF user account **must accept** the [Gemma license](https://huggingface.co/google/gemma-3-4b-it). The cluster must also have [Managed Service for Prometheus](https://cloud.google.com/stackdriver/docs/managed-prometheus), which is now enabled by default in GKE, along with the Custom Metrics Stackdriver Adapter (instructions below). The vllm deployments will use Gemma 3 1B and 4B models on Nvidia G2 VMs since they are low cost and readily available. It should not be considered a production ready deployment as you likely will want to use fully baked container images (vs downloading from HF) and tune the values for HPA/HealthChecks/Timeouts/etc.
+This setup follows the [Gemma on GKE with vLLM](https://cloud.google.com/kubernetes-engine/docs/tutorials/serve-gemma-gpu-vllm) guide, requires a [Hugging Face token](https://huggingface.co/docs/hub/security-tokens), and your HF user account **must accept** the [Gemma license](https://huggingface.co/google/gemma-3-4b-it). The cluster must also have [Managed Service for Prometheus](https://cloud.google.com/stackdriver/docs/managed-prometheus), which is now enabled by default in GKE, along with the Custom Metrics Stackdriver Adapter (instructions below). The [vllm-gemma3-1b.yaml](./vllm-gemma3-1b.yaml) and [vllm-gemma3-4b.yaml](./vllm-gemma3-4b.yaml) deployments will run on Nvidia G2 VMs which are low cost and readily available. The [gradio.yaml](./gradio.yaml) manifest creates a basic chat web UI that uses the Gemma 1B vllm deployment via the Kubernetes service.
+
+This should not be considered a production ready deployment as you likely will want to use fully baked container images (vs downloading from HF) and tune the values for HPA/HealthChecks/Timeouts/Probes/etc.
 
 ```shell
-# Variables used throughout this example
+# Variables used throughout this example (Update these for your specific environment)
 PROJECT_ID=my-project
 PROJECT_NUM=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
 CLUSTER_NAME=my-gke-cluster
@@ -60,7 +62,7 @@ kubectl get --raw /api/v1/namespaces/gemma/services/http:vllm-gemma-3-4b:8000/pr
 
 # GKE Native External Gateway with Basic HTTPRoute
 
-We'll start with a **gke-l7-regional-external-managed** Application Load Balancer (ALB) and basic HTTPRoutes and then build more complex examples on that shared GCLB. If you want to use an internal LB you can switch the [infgw-external.yaml](./infgw-external.yaml) gatewayClass to **gke-l7-rilb** for a regional internal ALB. The example uses a *.example.com [self-signed wildcard certificate](common/openssl-certs.sh) for HTTPS, but you can omit that entire section if want to use only HTTP for testing. There also is an HTTP->HTTPS redirect example commented out in the [infgw-httproute-basic.yaml](./infgw-httproute-basic.yaml) file if desired.
+We'll start with a **gke-l7-regional-external-managed** Application Load Balancer (ALB) and basic HTTPRoutes and then build more complex examples on that shared GCLB. If you want to use an internal LB you can switch the [infgw-external.yaml](./infgw-external.yaml) gatewayClass to **gke-l7-rilb** for a regional internal ALB. The example uses a *.example.com [self-signed wildcard certificate](https://github.com/gbrayut/cloud-examples/blob/main/common/openssl-certs.sh) for HTTPS, but you can omit that entire section if you want to use only HTTP for testing. There also is an HTTP->HTTPS redirect example commented out in the [infgw-httproute-basic.yaml](./infgw-httproute-basic.yaml) file if desired.
 
 ```shell
 # Deploy gateway and host header based routing
@@ -123,9 +125,9 @@ kubectl describe gtw -n gemma vllm-xlb
 kubectl describe httproute -n gemma bbr-gemma3-1b
 ```
 
-The response should include an **x-infgw-selected: bbr-gemma3-1b** or **bbr-gemma3-4b** header indicataing which HTTPRoute was used. If you get a **"fault filter abort"** error that usually means the ALB can't find a matching HTTPRoute or those routes have not fully propagated yet. Double check your hostnames, parentRefs, and resource manifests along with the [Gateways](https://console.cloud.google.com/kubernetes/gateways) section of Google Cloud Console for more details.
+The response should include an **x-infgw-selected: bbr-gemma3-1b** or **bbr-gemma3-4b** header indicating which HTTPRoute was used. If you get a **"fault filter abort"** error that tipically means the ALB can't find a matching HTTPRoute or those routes have not fully propagated yet. Double check your hostnames, parentRefs, and resource manifests along with the [Gateways](https://console.cloud.google.com/kubernetes/gateways) section of Google Cloud Console for more details.
 
-If you see a this error it usually means something is wrong with the HTTPRoute:
+If you see this error it usually means something is wrong with the HTTPRoute:
 > {"object":"error","message":"[{'type': 'missing', 'loc': ('body',), 'msg': 'Field required', 'input': None}]","type":"BadRequestError","param":null,"code":400}
 
 # GKE Inference Gateway with BBR and EPP
@@ -158,12 +160,12 @@ helm install ${INFERENCE_POOL} -n gemma \
   --version v0.4.0 \
   oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool
 
-# You should now see -epp pods for the endpoint picker for each inference pool
+# You should now see one -epp pod for each inference pool (inferenceExtension.replicas value defaults to 1)
 kubectl get pod -n gemma
 
 # Now create HTTPRoutes that use InferencePools as the backendRefs
-# Since the health check is configured as part of the InferencePool, we no longer need infgw-httproute-basic.yaml
-# InferenceModel resources are also needed and included in infgw-httproute-infp-infm.yaml
+# Since the health check is configured as part of the helm chart, we no longer need infgw-httproute-basic.yaml
+# InferenceModel resources are required and included in infgw-httproute-infp-infm.yaml
 kubectl apply -n gemma -f $BASE/infgw-external.yaml   # Still the same base gateway as before
 kubectl apply -n gemma -f $BASE/infgw-httproute-infp-infm.yaml
 
@@ -171,8 +173,8 @@ kubectl apply -n gemma -f $BASE/infgw-httproute-infp-infm.yaml
 # or console https://console.cloud.google.com/kubernetes/gateways
 kubectl describe httproute -n gemma infp-gemma3-1b
 
-# See endpoint picker logs
-kubectl logs -n gemma deploy/vllm-gemma-3-1b-epp
+# Follow endpoint picker logs to see routing details
+kubectl logs -n gemma deploy/vllm-gemma-3-1b-epp -f
 
 # Test EPP based routing
 GW_IP=$(kubectl get -n gemma gateway/vllm-xlb -o jsonpath='{.status.addresses[0].value}')
@@ -183,11 +185,12 @@ curl -is --resolve api.example.com:80:$GW_IP http://api.example.com/v1/completio
 # For https use curl -kvs --resolve api.example.com:443:$GW_IP https://...
 
 # Same as before, look for x-infgw-selected: infp-gemma3-1b or infp-gemma3-4b response header
-# You can also see some of the routing details in the epp logs
+# There also is a x-went-into-resp-headers: true debug header currently added by epp https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/release-0.4/pkg/epp/handlers/response.go#L133-L134
 ```
 
 # GKE Inference Gateway HPA Custom Metrics and Load Testing
-The End Point Picker (EPP) service exposes a set of [inference metrics](https://gateway-api-inference-extension.sigs.k8s.io/guides/metrics/) and for GKE the InferencePool helm chart will include a [ClusterPodMonitoring](https://cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed#gmp-pod-monitoring) resource to scrape those metrics so they can be displayed in Cloud Monitoring and used as part of [Custom Metric Horizontal Pod Autoscaler](https://cloud.google.com/kubernetes-engine/docs/tutorials/autoscaling-metrics#custom-metric). The [vllm-infgw-hpas.yaml](./vllm-infgw-hpas.yaml) example uses **inference_pool_average_kv_cache_utilization** as the custom metric and targets an average pod value of 10m (1%) for [desired replica](https://cloud.google.com/kubernetes-engine/docs/tutorials/autoscaling-metrics#custom-metric) calculations.
+
+The End Point Picker (EPP) service exposes a set of [inference metrics](https://gateway-api-inference-extension.sigs.k8s.io/guides/metrics-and-observability/). For GKE, the InferencePool helm chart will include a [ClusterPodMonitoring](https://cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed#gmp-pod-monitoring) resource to scrape these metrics so they can be displayed in Cloud Monitoring and used as part of [Custom Metric Horizontal Pod Autoscaler](https://cloud.google.com/kubernetes-engine/docs/tutorials/autoscaling-metrics#custom-metric). The [vllm-infgw-hpas.yaml](./vllm-infgw-hpas.yaml) example uses **inference_pool_average_kv_cache_utilization** as the custom scaling metric and targets an average pod value of 10m (1%) for [desired replica](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/) calculations (likely not great for real world use cases, but good for demonstration/PoC).
 
 ```shell
 # Apply example HPA and make sure the custom metrics adapter is working as expected
@@ -196,32 +199,33 @@ kubectl get hpa -n gemma
 # Targets "0/10m (avg)" is expected for a server with no traffic. If you still 
 # see "<unknown>/10m (avg)" you likely need the stackdriver adapter below
 
-# More details using:
+# Describe for more details or try using https://cloud.google.com/kubernetes-engine/docs/how-to/view-horizontalpodautoscaling-events
 kubectl describe hpa -n gemma vllm-gemma-3-1b
 
 # Error message indicating missing custom metric adapter
 Warning  FailedGetExternalMetric  3s (x6 over 78s)  horizontal-pod-autoscaler  unable to get external metric gemma/prometheus.googleapis.com|inference_pool_average_kv_cache_utilization|gauge/&LabelSelector{MatchLabels:map[string]string{metric.labels.name: vllm-gemma-3-1b,},MatchExpressions:[]LabelSelectorRequirement{},}: unable to fetch metrics from external metrics API: the server could not find the requested resource (get prometheus.googleapis.com|inference_pool_average_kv_cache_utilization|gauge.external.metrics.k8s.io)
 
-# Fix above errors by configuring Custom Metrics Adapter https://cloud.google.com/stackdriver/docs/managed-prometheus/hpa#stackdriver-adapter
+# Fix above error by configuring GKE Custom Metrics Adapter https://cloud.google.com/stackdriver/docs/managed-prometheus/hpa#stackdriver-adapter
 gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
   --role roles/monitoring.viewer \
   --member=principal://iam.googleapis.com/projects/$PROJECT_NUM/locations/global/workloadIdentityPools/$PROJECT_ID.svc.id.goog/subject/ns/custom-metrics/sa/custom-metrics-stackdriver-adapter
+
 kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/k8s-stackdriver/master/custom-metrics-stackdriver-adapter/deploy/production/adapter_new_resource_model.yaml
 
-# You should then soon seen values when watching the HPA
+# You should then soon see values when watching the HPA
 kubectl get hpa -n gemma -w
 
-# Run a basic load test with 250 workers and 45k requests using https://github.com/rakyll/hey
-# Note hey is very specific about URL being last https://github.com/rakyll/hey/issues/50#issuecomment-374420557
+# Run a simple load test with 250 workers and 45k requests using https://github.com/rakyll/hey
+# Note Hey is very specific about URL being last https://github.com/rakyll/hey/issues/50#issuecomment-374420557
 PROMPT="What are the top 5 most popular programming languages? Please be brief."
 hey -c 250 -n 45000 -t 60 -m POST -host api.example.com -H "Content-Type: application/json" \
   -d "{ \"model\": \"google/gemma-3-1b-it\", \"max_tokens\": 200, \"prompt\":\"$PROMPT\" }" \
   http://$GW_IP/v1/completions
 
-# The above hpa watch command will show HPA values or you can watch new pods created using
+# The above hpa watch command will show HPA target replica values or you can watch new pods being created using:
 kubectl get pod -n gemma -w
 
-# Load test results would look something like this
+# Load test results should look something like this
 Summary:
   Total:	546.8358 secs
   Slowest:	15.5625 secs
@@ -270,7 +274,7 @@ Status code distribution:
 # MIT licensed examples https://github.com/wizenheimer/periscope/blob/main/scripts/openai-completions-stress.js
 # and https://github.com/wizenheimer/periscope/blob/main/scripts/openai-completions.js
 ```
-NOTE: Due to the way these vllm pods download the model on startup it may take 7-10 minutes for new pods to become ready (1/1). If they hey command finishes too quickly you may need to increase the request count or run it in a loop. In a production environment you would use fully baked pods or sideload models and weights from AI/ML optimized storage like [Hyperdisk ML](https://cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/hyperdisk-ml).
+NOTE: Due to the way these vllm pods download the model on startup it may take 7-10 minutes for new pods to start (1/1 containers ready). If the Hey command finishes before autoscaling occurs you may need to increase the request count or run it multiple times in a loop. In a production environment you would use fully baked pods or sideload models and weights from AI/ML optimized storage like [Hyperdisk ML](https://cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/hyperdisk-ml).
 
 # GKE Inference Gateway and Cloud Monitoring
 
@@ -280,11 +284,13 @@ The GKE Inference Gateway also includes some example monitoring dashboards:
 - Search for dashboards: vllm
 - Select: vLLM Prometheus Overview ([direct link](https://console.cloud.google.com/monitoring/dashboards/integration/vllm.vllm-prometheus))
 
-Which uses metrics from the **vllm-gemma-3-1b:8000/metrics** endpoint and requires either Managed Prometheus [Automatic Application Monitoring](https://cloud.google.com/kubernetes-engine/docs/how-to/configure-automatic-application-monitoring) or manually configured metric scraping (PodMonitor/ClusterPodMonitor/etc).
+Which uses metrics from the **vllm-gemma-3-1b:8000/metrics** endpoint and requires either Managed Prometheus [Automatic Application Monitoring](https://cloud.google.com/kubernetes-engine/docs/how-to/configure-automatic-application-monitoring) or manually configured metric scraping (PodMonitor/ClusterPodMonitor/etc). So if the dashboard is empty make sure automatic application monitoring is enabled.
 
-There also is an example dashboard for the Inference Gateway/Pool/Models: 
+There also is an example dashboard showing details for the Inference Gateway/Pool/Models:
 - Search for dashboards: inference
 - Select: GKE Inference Gateway Prometheus Overview ([direct link](https://console.cloud.google.com/monitoring/dashboards/integration/gateway-api-inference-extension.inference-extension-prometheus))
+
+TODO: Link to blog post or screenshots of dashboards?
 
 # Advanced Topics
 
@@ -301,7 +307,10 @@ TODO add lora examples?
 https://github.com/cr7258/gateway-api-inference-extension/blob/main/config/manifests/vllm/gpu-deployment.yaml
 
 TODO: add example for https://docs.vllm.ai/en/latest/features/lora.html#serving-lora-adapters
-TODO: move shared gateway to it's own namespace?
+
+TODO: move shared gateway to it's own namespace? I think this requires ReferenceGrants https://github.com/gbrayut/cloud-examples/blob/main/asm-multi-cluster-failover/httproute-weighted.yaml#L72
+
+TODO: instructions for connecting Gradio to use Inference Gateway? And have a model selector in web UI?
 
 # General Troubleshooting
 
@@ -310,14 +319,14 @@ If the HPA or Dashboard are not working you can try enabling [Target Status](htt
 
 > Last Error:                    Get "http://10.120.2.35:9090/metrics": unable to read authorization credentials: secret default/inference-gateway-sa-metrics-reader-secret not found or forbidden
 
-then double check the vllm-infgw-metrics.yaml resources created the scrape secret and you may also need to delete/rollout restart the collector pod on the node where epp is running.
+then double check vllm-infgw-metrics.yaml created the scrape secret, and you may also need to delete/rollout restart the collector pod on any nodes where the epp is running.
 
 ## View HTTP Logs
 
 This [example query](https://console.cloud.google.com/logs/query;query=resource.type%3D%22http_external_regional_lb_rule%22%0Aresource.labels.network_name%3D%22gke-vpc%22%0Aresource.labels.region%3D%22us-central1%22
 ) should show the HTTP logs for an external regional ALB in Log Explorer:
 
-```json
+```shell
 resource.type="http_external_regional_lb_rule"
 resource.labels.network_name="gke-vpc"
 resource.labels.region="us-central1"
