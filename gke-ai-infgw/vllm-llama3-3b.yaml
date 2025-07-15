@@ -2,18 +2,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vllm-gemma-3-4b
+  name: vllm-llama-3-3b
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: vllm-gemma-3-4b
+      app: vllm-llama-3-3b
   strategy:
     type: Recreate  # Use this for faster updates when troubleshooting (but not in production)
   template:
     metadata:
       labels:
-        app: vllm-gemma-3-4b
+        app: vllm-llama-3-3b
     spec:
       serviceAccountName: default
       terminationGracePeriodSeconds: 15  # again faster troubleshooting but production should have better drain time
@@ -34,10 +34,13 @@ spec:
           args:
             - --model=$(MODEL)
             - --tensor-parallel-size=1
-            - --dtype=bfloat16
+            - --gpu-memory-utilization
+            - "0.90"  # or 95-98 if want to use larger context window
+            - --max-model-len
+            - "16384" # or 32768. L4 doesn't seem to have enough memory for larger context.
           env:
             - name: MODEL
-              value: google/gemma-3-4b-it
+              value: meta-llama/Llama-3.2-3B-Instruct   # or 1B. Both need license accepted.
             - name: HUGGING_FACE_HUB_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -73,7 +76,7 @@ spec:
             failureThreshold: 1
             timeoutSeconds: 1
           startupProbe:
-            failureThreshold: 7200  #3600
+            failureThreshold: 10800 #3600
             initialDelaySeconds: 2
             periodSeconds: 1
             httpGet:
@@ -90,10 +93,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: vllm-gemma-3-4b
+  name: vllm-llama-3-3b
 spec:
   selector:
-    app: vllm-gemma-3-4b
+    app: vllm-llama-3-3b
   type: ClusterIP
   ports:
     - protocol: TCP

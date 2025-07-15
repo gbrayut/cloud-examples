@@ -32,6 +32,36 @@ spec:
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
+  name: bbr-llama3-3b
+spec:
+  parentRefs:
+    - name: vllm-xlb
+      #sectionName: https  # Only bind on HTTPS listener
+  hostnames:
+    - "bbr.example.com"
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: X-Gateway-Model-Name
+              value: meta-llama/Llama-3.2-3B-Instruct
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: vllm-llama-3-3b
+          port: 8000
+      filters:
+        # Add response header to see which rule was matched https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways#configure_custom_response_headers
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            add:
+              - name: x-infgw-selected
+                value: bbr-llama3-3b
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
   name: bbr-gemma3-4b
 spec:
   parentRefs:

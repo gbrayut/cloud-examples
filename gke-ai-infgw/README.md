@@ -81,9 +81,11 @@ curl -is -H "host: 4b.example.com" http://$GW_IP/v1/models
 # All 1b/4b.example.com requests should route to 1b/4b model deployments
 # remaining *.example.com or non-matching hostnames get a 404 response by default from ALB
 curl -vs --resolve 1b.example.com:80:$GW_IP http://1b.example.com/v1/models | jq .
+curl -s  --resolve 3b.example.com:80:$GW_IP http://3b.example.com/v1/models | jq .
 curl -s  --resolve 4b.example.com:80:$GW_IP http://4b.example.com/v1/models | jq .
 # or https
 curl -kvs --resolve 1b.example.com:443:$GW_IP https://1b.example.com/v1/models | jq .
+curl -ks  --resolve 3b.example.com:443:$GW_IP https://3b.example.com/v1/models | jq .
 curl -ks  --resolve 4b.example.com:443:$GW_IP https://4b.example.com/v1/models | jq .
 ```
 
@@ -116,6 +118,7 @@ PROMPT="Why is the sky blue? Please be brief."
 curl -is --resolve bbr.example.com:80:$GW_IP http://bbr.example.com/v1/completions \
   -H "Content-Type: application/json" \
   -d "{ \"model\": \"google/gemma-3-1b-it\", \"max_tokens\": 200, \"prompt\":\"$PROMPT\" }"
+# can also use model google/gemma-3-1b-it and meta-llama/Llama-3.2-3B-Instruct
 # For https use curl -kv --resolve bbr.example.com:443:$GW_IP https://...
 
 # For troubleshooting check deployent logs (or follow with -f) and Gateway resource status:
@@ -154,6 +157,14 @@ helm install ${INFERENCE_POOL} -n gemma \
 
 # Since the 4b model is a separate deployment, it needs it's own InferencePool as well
 INFERENCE_POOL=vllm-gemma-3-4b
+helm install ${INFERENCE_POOL} -n gemma \
+  --set inferencePool.modelServers.matchLabels.app=${INFERENCE_POOL} \
+  --set provider.name=gke \
+  --version v0.4.0 \
+  oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool
+
+# Same for llama 3b
+INFERENCE_POOL=vllm-llama-3-3b
 helm install ${INFERENCE_POOL} -n gemma \
   --set inferencePool.modelServers.matchLabels.app=${INFERENCE_POOL} \
   --set provider.name=gke \
@@ -211,7 +222,7 @@ prometheus.googleapis.com|inference_pool_average_kv_cache_utilization|gauge.exte
 
 # Fix above error by configuring GKE Custom Metrics Adapter https://cloud.google.com/stackdriver/docs/managed-prometheus/hpa#stackdriver-adapter
 gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
-  --role roles/monitoring.viewer \
+  --role roles/monitoring.viewer --condition None \
   --member=principal://iam.googleapis.com/projects/$PROJECT_NUM/locations/global/workloadIdentityPools/$PROJECT_ID.svc.id.goog/subject/ns/custom-metrics/sa/custom-metrics-stackdriver-adapter
 
 kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/k8s-stackdriver/master/custom-metrics-stackdriver-adapter/deploy/production/adapter_new_resource_model.yaml
@@ -223,8 +234,10 @@ kubectl get hpa -n gemma -w
 # Note Hey is very specific about URL being last https://github.com/rakyll/hey/issues/50#issuecomment-374420557
 PROMPT="What are the top 5 most popular programming languages? Please be brief."
 hey -c 250 -n 45000 -t 60 -m POST -host api.example.com -H "Content-Type: application/json" \
-  -d "{ \"model\": \"google/gemma-3-1b-it\", \"max_tokens\": 200, \"prompt\":\"$PROMPT\" }" \
+  -d "{ \"model\": \"google/gemma-3-4b-it\", \"max_tokens\": 200, \"prompt\":\"$PROMPT\" }" \
   http://$GW_IP/v1/completions
+
+# Can also use google/gemma-3-1b-it (hard to make scale) or meta-llama/Llama-3.2-3B-Instruct (missing hpa)
 
 # The above hpa watch command will show HPA target replica values or you can watch new pods being created using:
 kubectl get pod -n gemma -w
