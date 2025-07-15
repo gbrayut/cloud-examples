@@ -203,7 +203,11 @@ kubectl get hpa -n gemma
 kubectl describe hpa -n gemma vllm-gemma-3-1b
 
 # Error message indicating missing custom metric adapter
-Warning  FailedGetExternalMetric  3s (x6 over 78s)  horizontal-pod-autoscaler  unable to get external metric gemma/prometheus.googleapis.com|inference_pool_average_kv_cache_utilization|gauge/&LabelSelector{MatchLabels:map[string]string{metric.labels.name: vllm-gemma-3-1b,},MatchExpressions:[]LabelSelectorRequirement{},}: unable to fetch metrics from external metrics API: the server could not find the requested resource (get prometheus.googleapis.com|inference_pool_average_kv_cache_utilization|gauge.external.metrics.k8s.io)
+Warning  FailedGetExternalMetric  3s (x6 over 78s)  horizontal-pod-autoscaler  unable to get external metric
+gemma/prometheus.googleapis.com|inference_pool_average_kv_cache_utilization|gauge/&LabelSelector{
+MatchLabels:map[string]string{metric.labels.name: vllm-gemma-3-1b,},MatchExpressions:[]LabelSelectorRequirement{},}:
+unable to fetch metrics from external metrics API: the server could not find the requested resource (get
+prometheus.googleapis.com|inference_pool_average_kv_cache_utilization|gauge.external.metrics.k8s.io)
 
 # Fix above error by configuring GKE Custom Metrics Adapter https://cloud.google.com/stackdriver/docs/managed-prometheus/hpa#stackdriver-adapter
 gcloud projects add-iam-policy-binding projects/$PROJECT_ID \

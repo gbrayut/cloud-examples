@@ -1,0 +1,108 @@
+# Follows similar example from https://github.com/gbrayut/cloud-examples/tree/main/cloudrun-sql-auth-proxy
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cloud-sql-demo
+---
+# https://github.com/GoogleCloudPlatform/python-docs-samples/blob/main/cloud-sql/mysql/sqlalchemy/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gke-cloud-sql-quickstart
+  namespace: cloud-sql-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gke-cloud-sql-app
+  template:
+    metadata:
+      labels:
+        app: gke-cloud-sql-app
+    spec:
+      containers:
+      - name: gke-cloud-sql-app
+        image: "us-central1-docker.pkg.dev/gregbray-vpc/cloud-run-source-deploy/cloud-sql-demo:latest"
+        # This app listens on port 8080 for web traffic by default.
+        ports:
+        - containerPort: 8080
+        env:
+        - name: PORT
+          value: "8080"
+        # This project uses environment variables to determine
+        # how you would like to run your application
+        # To use the Python Connector (recommended) - use INSTANCE_CONNECTION_NAME (proj:region:instance)
+        # To use TCP - Setting INSTANCE_HOST will use TCP (e.g., 127.0.0.1)
+        # To use Unix, use INSTANCE_UNIX_SOCKET (e.g., /cloudsql/proj:region:instance)
+        - name: INSTANCE_HOST
+          value: "10.30.160.3"
+        - name: DB_PORT
+          value: "3306"
+        # For Automatic IAM Authentication with the Python Connector
+        # use DB_IAM_USER instead of DB_USER (recommended)
+        # You may also remove the DB_PASS environment variable if
+        # you use Automatic IAM Authentication
+        - name: DB_USER
+          value: test-user
+        - name: DB_PASS
+          valueFrom:
+            secretKeyRef:
+              name: db-password
+              key: password
+        - name: DB_NAME
+          value: test-db
+      # TODO: Switch from UN/PW to cloud sql proxy / IAM auth
+      #- name: cloud-sql-proxy
+      #  # This uses the latest version of the Cloud SQL Proxy
+      #  # It is recommended to use a specific version for production environments.
+      #  # See: https://github.com/GoogleCloudPlatform/cloudsql-proxy 
+      #  image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:latest
+      #  args:
+      #    # If connecting from a VPC-native GKE cluster, you can use the
+      #    # following flag to have the proxy connect over private IP
+      #    # - "--private-ip"
+      #
+      #    # If you are not connecting with Automatic IAM, you can delete
+      #    # the following flag.
+      #    - "--auto-iam-authn"
+      #
+      #    # tcp should be set to the port the proxy should listen on
+      #    # and should match the DB_PORT value set above.
+      #    # Defaults: MySQL: 3306, Postgres: 5432, SQLServer: 1433
+      #    - "--port=3306"
+      #    - "<INSTANCE_CONNECTION_NAME>"
+      #  securityContext:
+      #    # The default Cloud SQL proxy image runs as the
+      #    # "nonroot" user and group (uid: 65532) by default.
+      #    runAsNonRoot: true
+---
+# https://github.com/GoogleCloudPlatform/python-docs-samples/blob/main/cloud-sql/mysql/sqlalchemy/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: gke-cloud-sql-app
+  namespace: cloud-sql-demo
+spec:
+  type: ClusterIP
+  selector:
+    app: gke-cloud-sql-app
+  ports:
+  - port: 80
+    targetPort: 8080
+---
+# for gke-gclb-misc/test-gatewayapi-features.yaml
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: cross-namespace-access
+  namespace: cloud-sql-demo
+spec:
+  from:
+  # HTTPRoute resources in shared-gateway namespace
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    namespace: shared-gateway
+  to:
+  # All services in this namespace
+  - group: ""
+    kind: Service

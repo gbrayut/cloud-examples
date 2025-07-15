@@ -1,0 +1,165 @@
+# GKE Gateway example for multiple features
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shared-gateway
+---
+# https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: shared-gateway
+  namespace: shared-gateway
+spec:
+  gatewayClassName: gke-l7-global-external-managed
+  listeners:
+  - name: http
+    hostname: "gateway.gregbray.demo.altostrat.com"
+    port: 80
+    protocol: HTTP
+    allowedRoutes:
+      namespaces:
+        from: All   # This lets you limit which namespaces can use the shared gateway
+    # See also ReferenceGrants below that allow shared-gateway to access services in target namespaces
+
+  # optional: configure Static IP https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways#gateway_ip_addressing
+  # gcloud compute addresses create gateway-static-ip --project gregbray-vpc --global
+  addresses:
+  - type: NamedAddress
+    value: gateway-static-ip  # Configured in Cloud DNS to resolve via above hostname
+---
+# https://gateway-api.sigs.k8s.io/api-types/httproute/
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: example-route
+  namespace: shared-gateway
+spec:
+  parentRefs:
+  - name: shared-gateway
+    namespace: shared-gateway
+  hostnames:
+  - "gateway.gregbray.demo.altostrat.com"
+  rules:
+  # redirect /docs to https://gateway-api.sigs.k8s.io/
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /docs
+    filters:
+    - type: RequestRedirect
+      requestRedirect:
+        hostname: gateway-api.sigs.k8s.io
+        path:
+          type: ReplaceFullPath
+          replaceFullPath: /
+        scheme: https
+        statusCode: 302
+  # route /app-1 to app-1 service
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /app-1  
+    backendRefs:
+    - namespace: app-1
+      name: whereami
+      port: 80
+    # Strip /app-1 prefix when forwarding to backend
+    filters:
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /app-1
+  # route /app-2 to app-2 service
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /app-2
+    backendRefs:
+    - namespace: app-2
+      name: whereami
+      port: 80
+    # Strip /app-2 prefix when forwarding to backend
+    filters:
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /app-2
+  # weighted traffic split 80/20 for /canary requests
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /canary
+    backendRefs:
+    - namespace: app-1
+      name: whereami
+      port: 80
+      weight: 80
+    - namespace: app-2
+      name: whereami
+      port: 80
+      weight: 20
+    # Strip /canary prefix when forwarding to backend
+    filters:
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /canary
+    # Also add some custom headers on proxied request
+    - type: RequestHeaderModifier
+      requestHeaderModifier:
+        add:
+        - name: x-is-canary
+          value: "true"
+        # https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways#configure_custom_response_headers
+        - name: X-Client-Geo-Location
+          value: "{client_region},{client_city},{client_city_lat_long}"
+  # Default route. See gke-cloud-sql/cloud-sql-demo.yaml
+  - backendRefs:
+    - namespace: cloud-sql-demo
+      name: gke-cloud-sql-app
+      port: 80
+---
+# Allow HTTPRoute resources in shared-gateway namespace to use app-1/app-2 services https://gateway-api.sigs.k8s.io/api-types/referencegrant/
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: cross-namespace-access
+  namespace: app-1
+spec:
+  from:
+  # HTTPRoute resources in shared-gateway namespace
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    namespace: shared-gateway
+  to:
+  # All services in this namespace
+  - group: ""
+    kind: Service
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: cross-namespace-access
+  namespace: app-2
+spec:
+  from:
+  # HTTPRoute resources in shared-gateway namespace
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    namespace: shared-gateway
+  to:
+  # All services in this namespace
+  - group: ""
+    kind: Service
+
+# Test URLs:
+# http://gateway.gregbray.demo.altostrat.com/
+# http://gateway.gregbray.demo.altostrat.com/docs
+# http://gateway.gregbray.demo.altostrat.com/app-1
+# http://gateway.gregbray.demo.altostrat.com/app-2
+# http://gateway.gregbray.demo.altostrat.com/canary
+# http://gateway.gregbray.demo.altostrat.com/canary/headers
