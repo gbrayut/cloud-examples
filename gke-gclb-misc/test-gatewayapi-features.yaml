@@ -23,10 +23,13 @@ spec:
     # See also ReferenceGrants below that allow shared-gateway to access services in target namespaces
 
   # optional: configure Static IP https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways#gateway_ip_addressing
-  # gcloud compute addresses create gateway-static-ip --project gregbray-vpc --global
+  # gcloud compute addresses create gateway-static-ip --project gregbray-vpc --global   # 34.107.140.72
+  # gcloud compute addresses create gateway-uc1-static-ip --project gregbray-vpc --region us-central1   # 34.135.198.53
   addresses:
-  - type: NamedAddress
-    value: gateway-static-ip  # Configured in Cloud DNS to resolve via above hostname
+  - type: NamedAddress          # Deprecated? https://gateway-api.sigs.k8s.io/reference/spec/#addresstype
+    value: gateway-static-ip    # Configured in Cloud DNS to resolve via above hostname
+  #- type: IPAddress             # alternate option for some implementations
+  #  value: "34.135.198.53"
 ---
 # https://gateway-api.sigs.k8s.io/api-types/httproute/
 apiVersion: gateway.networking.k8s.io/v1
