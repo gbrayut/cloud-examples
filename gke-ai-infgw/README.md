@@ -58,6 +58,9 @@ kubectl apply -n gemma -f $BASE/vllm-gemma3-4b.yaml
 kubectl wait -n gemma --for=condition=Available --timeout=1800s deployment/vllm-gemma-3-4b
 kubectl logs -n gemma -f -l app=vllm-gemma-3-4b
 kubectl get --raw /api/v1/namespaces/gemma/services/http:vllm-gemma-3-4b:8000/proxy/v1/models | jq .
+
+# And for testing Llama model use
+kubectl apply -n gemma -f $BASE/vllm-llama3-3b.yaml
 ```
 
 # GKE Native External Gateway with Basic HTTPRoute
@@ -308,6 +311,32 @@ There also is an example dashboard showing details for the Inference Gateway/Poo
 - Select: GKE Inference Gateway Prometheus Overview ([direct link](https://console.cloud.google.com/monitoring/dashboards/integration/gateway-api-inference-extension.inference-extension-prometheus))
 
 TODO: Link to blog post or screenshots of dashboards?
+
+# Google Cloud Armor WAF for GKE Inference Gateway
+
+To configure [Cloud Armor](https://cloud.google.com/kubernetes-engine/docs/how-to/configure-gateway-resources#configure_cloud_armor) Web Application Firewall (WAF) rules on the GKE Inference Gateway, you need to specify **InferencePool** as the **targetRef kind** on the **GCPBackendPolicy** resource instead of the usual Service or ServiceImport. See [./infgw-policy-cloud-armor.yaml](./infgw-policy-cloud-armor.yaml) example for what that looks like. Also because the rules are apply at a Backend Service level, they will not be evaluated for things like RequestRedirect filters.
+
+**NOTE:** The [InferencePool helm chart](https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/9a2667c2853c0883c8d340f25e35b204dc970604/config/charts/inferencepool/templates/gke.yaml) currently includes it's own static GCPBackendPolicy manifest, so you will need to either customize the chart or apply an updated manifest manually using something like:
+
+```shell
+kubectl apply -n gemma -f $BASE/infgw-policy-cloud-armor.yaml
+```
+
+Expected curl result when WAF rule action is deny-403:
+
+```
+< HTTP/1.1 403 Forbidden
+< content-type: text/html; charset=UTF-8
+< content-length: 134
+< x-infgw-selected: infp-gemma3-1b
+< date: Thu, 24 Jul 2025 21:47:04 GMT
+< via: 1.1 google
+< 
+* Connection #0 to host api.example.com left intact
+<!doctype html><meta charset="utf-8"><meta name=viewport content="width=device-width, initial-scale=1"><title>403</title>403 Forbidden
+```
+
+**NOTE:** It currently seems when applying the GCPBackendPolicy to target one InferencePool, the WAF rules will apply to all InferencePools in the Url map. The [GCP Console](https://console.cloud.google.com/net-security/securitypolicies/list) will only show the desired Backend Service, but from my testing the rules applied to all InferencePool instances.
 
 # Advanced Topics
 
