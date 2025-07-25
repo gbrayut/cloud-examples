@@ -1,0 +1,36 @@
+# Create a demo CA Issuer using self signed certificate https://cert-manager.io/docs/configuration/selfsigned/#bootstrapping-ca-issuers
+# Bootstrap issuer for CA root secret https://doc.crds.dev/github.com/cert-manager/cert-manager/cert-manager.io/ClusterIssuer/v1@v1.17.1#spec-selfSigned
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+---
+# Root certificate for CA Issuer https://doc.crds.dev/github.com/cert-manager/cert-manager/cert-manager.io/Certificate/v1@v1.17.1
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: my-selfsigned-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: my-selfsigned-ca
+  secretName: root-secret
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+# CA Issuer https://doc.crds.dev/github.com/cert-manager/cert-manager/cert-manager.io/ClusterIssuer/v1@v1.17.1#spec-ca
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: my-ca-issuer
+spec:
+  ca:
+    # `ClusterIssuer` resource is not namespaced, so `secretName` is assumed to reference secret in `cert-manager` namespace.
+    secretName: root-secret

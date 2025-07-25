@@ -1,0 +1,122 @@
+# Passthrough TLSRoute example modified from https://github.com/envoyproxy/gateway/blob/main/examples/kubernetes/tls-passthrough.yaml
+# Note: this uses the same GatewayClass and Gateway resource from 01-basic-example.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: passthrough-echoserver
+  namespace: eg-ingress
+  labels:
+    run: passthrough-echoserver
+spec:
+  ports:
+    - port: 443
+      targetPort: 8443
+      protocol: TCP
+  selector:
+    run: passthrough-echoserver
+---
+# Configure echo-basic server with TLS via cert-manager (see /cloud-examples/gke-cert-manager)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: passthrough-echoserver
+  namespace: eg-ingress
+spec:
+  selector:
+    matchLabels:
+      run: passthrough-echoserver
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        run: passthrough-echoserver
+    spec:
+      containers:
+        # https://console.cloud.google.com/artifacts/docker/k8s-staging-gateway-api/us/gcr.io/echo-basic
+        - name: passthrough-echoserver
+          image: gcr.io/k8s-staging-gateway-api/echo-basic:v20250725-v1.3.0-96-g58fc576e
+          ports:
+            - containerPort: 8443
+          env:
+            # https://github.com/kubernetes-sigs/gateway-api/blob/main/conformance/echo-basic/echo-basic.go#L81
+            - name: HTTPS_PORT
+              value: "8443"
+            - name: TLS_SERVER_CERT
+              value: /etc/server-certs/tls.crt
+            - name: TLS_SERVER_PRIVKEY
+              value: /etc/server-certs/tls.key
+            # Optional: set TLS_CLIENT_CACERTS if you want to see mTLS details for client certificates (see tls.peerCertificates in echo response)
+            # Note: echo-basic uses tls.VerifyClientCertIfGiven not RequireAndVerifyClientCert https://github.com/kubernetes-sigs/gateway-api/blob/c60a5e0352b80badc442e884d3a9cc6878e1c856/conformance/echo-basic/echo-basic.go#L286
+            - name: TLS_CLIENT_CACERTS
+              value: /etc/server-certs/ca.crt
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          volumeMounts:
+            - mountPath: /etc/server-certs
+              name: tls
+              readOnly: true
+      securityContext:
+        # matches nonroot:nonroot from https://github.com/kubernetes-sigs/gateway-api/blob/main/docker/Dockerfile.echo-basic#L38
+        runAsUser: 100
+        runAsGroup: 101
+        fsGroup: 101      # Required so cert-manager CSI driver can configure same fs-group permissions
+      volumes:
+        # For TLS via static secret see https://gateway.envoyproxy.io/latest/tasks/security/tls-passthrough/
+        #- name: server-certs
+        #  secret:
+        #    secretName: server-certs
+
+        # Configure cert-manager CSI driver to generate and inject TLS certificates as volume (no secrets required)
+        # More details at https://cert-manager.io/docs/usage/csi-driver/
+        - name: tls
+          csi:
+            readOnly: true
+            driver: csi.cert-manager.io
+            volumeAttributes:
+              csi.cert-manager.io/issuer-kind: ClusterIssuer
+              csi.cert-manager.io/issuer-name: my-ca-issuer
+              csi.cert-manager.io/certificate-file: tls.crt
+              csi.cert-manager.io/privatekey-file: tls.key
+              csi.cert-manager.io/fs-group: "101"   # Fixes error: panic: Failed to start listening: open /etc/server-certs/tls.crt: permission denied
+
+              # There are many valid kubernetes dns entries for services so add the desired SAN entries here
+              csi.cert-manager.io/dns-names: passthrough.example.com,
+                passthrough-echoserver,
+                passthrough-echoserver.${POD_NAMESPACE},
+                passthrough-echoserver.${POD_NAMESPACE}.svc.cluster.local.,
+                ${POD_NAME}.${POD_NAMESPACE}.svc.cluster.local.
+
+              # CN was deprecated by RFC 2818 in early 2000, but can still set to one of the SAN values if desired
+              csi.cert-manager.io/common-name: passthrough.example.com
+---
+# Configure passthru TLSRoute to match on SNI values https://gateway-api.sigs.k8s.io/guides/tls/
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TLSRoute
+metadata:
+  name: tlsroute
+  namespace: eg-ingress
+spec:
+  parentRefs:
+    - name: eg
+  hostnames:
+    - "passthrough.example.com"
+  rules:
+    - backendRefs:
+        - group: ""
+          kind: Service
+          name: passthrough-echoserver
+          port: 443
+          weight: 1
+
+# Test mTLS using:
+# GW_IP=$(kubectl get svc -n envoy-gateway-system -l "gateway.envoyproxy.io/owning-gateway-name==eg,gateway.envoyproxy.io/owning-gateway-namespace==eg-ingress" -o jsonpath="{.items[0].status.loadBalancer['ingress'][0].ip}")
+# curl -v --cacert /tmp/ca.crt --cert /tmp/tls.crt --key /tmp/tls.key --resolve passthrough.example.com:6443:$GW_IP https://passthrough.example.com:6443
+
+# Or test without mTLS using:
+# curl -vk --resolve passthrough.example.com:6443:$GW_IP https://passthrough.example.com:6443

@@ -1,0 +1,101 @@
+# Create an ACME based Issuer using Google Trust Services Public CA https://cloud.google.com/certificate-manager/docs/public-ca-tutorial
+
+# https://cloud.google.com/certificate-manager/docs/public-ca-tutorial#request-key-hmac
+# gcloud publicca external-account-keys create --project gregbray-vpc
+
+# KeyValue=0u62p8aLI8_REDACTED_
+# kubectl create secret generic google-public-ca-eab-secret \
+#   --namespace cert-manager --from-literal=key1=b64MacKey=$KeyValue
+
+# If using DNS01 challenge solver with Cloud DNS, grant KSA permissions on DNS Zone
+# gcloud projects add-iam-policy-binding gregbray-vpc \
+#    --member "serviceAccount:gregbray-vpc.svc.id.goog[cert-manager/cert-manager]" \
+#    --role roles/dns.admin --condition None
+
+# https://cert-manager.io/docs/configuration/acme/
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: google-public-ca
+spec:
+  acme:
+    # You must replace this email address with your own.
+    # ACME issuer will use this to contact you about
+    # certificates, and issues related to your account.
+    email: greg.bray@gmail.com
+    # If the ACME server supports profiles, you can specify the profile name here.
+    # See #acme-certificate-profiles below.
+    #profile: tlsserver
+    server: https://dv.acme-v02.api.pki.goog/directory
+    # external-account-keys credentials from above
+    externalAccountBinding:
+      keyID: 2bcbdc9aba3b90f9745cdaadf614aca8
+      keySecretRef:
+        key: b64MacKey
+        name: google-public-ca-eab-secret
+    privateKeySecretRef:
+      # Secret resource that will be used to store the account's private key.
+      # This is your identity with your ACME provider. Any secret name may be
+      # chosen. It will be populated with data automatically, so generally
+      # nothing further needs to be done with the secret. If you lose this
+      # identity/secret, you will be able to generate a new one and generate
+      # certificates for any/all domains managed using your previous account,
+      # but you will be unable to revoke any certificates generated using that
+      # previous account.
+      name: google-public-ca-credentials
+    # disableAccountKeyGeneration: true   # use shared account https://cert-manager.io/docs/configuration/acme/#reusing-an-acme-account
+
+    # Add a single challenge solver or multiple with selectors https://cert-manager.io/docs/configuration/acme/#adding-multiple-solver-types
+    solvers:
+    # https://cert-manager.io/docs/configuration/acme/http01/
+    #- http01:
+    #    ingress:
+    #      ingressClassName: nginx
+    # https://cert-manager.io/docs/configuration/acme/dns01/
+    - dns01:
+        # https://cert-manager.io/docs/configuration/acme/dns01/google/
+        cloudDNS:
+          project: gregbray-vpc
+          hostedZoneName: gregbray-demo   # optional field that tells cert-manager which zone to use
+          # Use Workload Identity for GKE instead of static credentials. See permission grant above.
+          #serviceAccountSecretRef:
+          #  name: gcp-cert-manager-sa
+          #  key: key.json
+      selector:
+        # https://cert-manager.io/docs/configuration/acme/#dns-zones
+        dnsZones:
+        - 'gregbray.demo.altostrat.com'
+    # Another DNS challenge solver for a different domain
+    #- dns01:
+    #    # https://cert-manager.io/docs/configuration/acme/dns01/cloudflare/
+    #    cloudflare:
+    #      apiTokenSecretRef:
+    #        name: cloudflare-api-token-secret
+    #        key: token
+    #  selector:
+    #    # https://cert-manager.io/docs/configuration/acme/#dns-zones
+    #    dnsZones:
+    #    - 'demo.a-z.dev'
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: demo-altostrat-certificate
+  namespace: default
+spec:
+  # The secret name to store the signed certificate
+  secretName: demo-altostrat-cert-tls
+  # Common Name
+  commonName: test.gregbray.demo.altostrat.com
+  # DNS SAN
+  dnsNames:
+    - gregbray.demo.altostrat.com
+    - "*.gregbray.demo.altostrat.com"
+
+  duration: 2160h # 90d
+  renewBefore: 360h # 15d before expires
+
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: google-public-ca

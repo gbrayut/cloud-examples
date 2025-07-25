@@ -1,0 +1,40 @@
+# Create a certificate and sync to GCM using https://github.com/robertlestak/cert-manager-sync
+# https://cert-manager.io/docs/usage/certificate/
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: test-cert
+spec:
+  secretName: test-cert
+  secretTemplate:
+    # Add required annotations to the kubernetes secret holding tls certificate
+    annotations:
+      cert-manager-sync.lestak.sh/sync-enabled: "true"      # enable syncing on this tls secret
+      cert-manager-sync.lestak.sh/gcp-enabled: "true"       # sync certificate to GCP certificate manager store
+      cert-manager-sync.lestak.sh/gcp-location: us-central1 # GCP location to store cert (use global for anycast based LBs)
+      cert-manager-sync.lestak.sh/gcp-project: gregbray-vpc # GCP project to store cert
+
+  # https://doc.crds.dev/github.com/cert-manager/cert-manager/cert-manager.io/Certificate/v1
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  duration: 2160h # 90d
+  renewBefore: 360h # 15d before expires
+
+  isCA: false
+  usages:
+    - server auth
+    - client auth
+
+  subject:
+    organizations:
+      - my-org
+
+  # At least one of commonName (possibly through literalSubject), dnsNames, uris, emailAddresses, ipAddresses or otherNames is required.
+  dnsNames:
+    - client.example.com
+  
+  issuerRef:
+    name: my-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io

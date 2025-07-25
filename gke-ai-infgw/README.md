@@ -314,9 +314,9 @@ TODO: Link to blog post or screenshots of dashboards?
 
 # Google Cloud Armor WAF for GKE Inference Gateway
 
-To configure [Cloud Armor](https://cloud.google.com/kubernetes-engine/docs/how-to/configure-gateway-resources#configure_cloud_armor) Web Application Firewall (WAF) rules on the GKE Inference Gateway, you need to specify **InferencePool** as the **targetRef kind** on the **GCPBackendPolicy** resource instead of the usual Service or ServiceImport. See [./infgw-policy-cloud-armor.yaml](./infgw-policy-cloud-armor.yaml) example for what that looks like. Also because the rules are apply at a Backend Service level, they will not be evaluated for things like RequestRedirect filters.
+To configure [Cloud Armor](https://cloud.google.com/kubernetes-engine/docs/how-to/configure-gateway-resources#configure_cloud_armor) Web Application Firewall (WAF) rules on the GKE Inference Gateway, you need to specify **InferencePool** as the **targetRef kind** on the **GCPBackendPolicy** resource instead of the usual Service or ServiceImport. See [./infgw-policy-cloud-armor.yaml](./infgw-policy-cloud-armor.yaml) example for what that looks like. Also because the rules are applied at a Backend Service level, they will not be evaluated for things like RequestRedirect filters.
 
-**NOTE:** The [InferencePool helm chart](https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/9a2667c2853c0883c8d340f25e35b204dc970604/config/charts/inferencepool/templates/gke.yaml) currently includes it's own static GCPBackendPolicy manifest, so you will need to either customize the chart or apply an updated manifest manually using something like:
+**NOTE:** The v0.4 [InferencePool helm chart](https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/9a2667c2853c0883c8d340f25e35b204dc970604/config/charts/inferencepool/templates/gke.yaml#L22-L37) currently includes it's own static GCPBackendPolicy manifest, so you will need to either customize the chart or apply an updated manifest manually using something like:
 
 ```shell
 kubectl apply -n gemma -f $BASE/infgw-policy-cloud-armor.yaml

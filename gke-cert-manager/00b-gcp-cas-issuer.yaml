@@ -1,0 +1,49 @@
+# Google Certificate Authority Service Issuer for cert-manager https://github.com/cert-manager/google-cas-issuer
+# Check the readme for full setup instructions, but the following should work assuming you have an existing CAS pool.
+
+# Deploy CAS external issuer via helm chart https://github.com/cert-manager/google-cas-issuer/tree/main/deploy/charts/google-cas-issuer
+# helm repo add jetstack https://charts.jetstack.io --force-update
+# helm upgrade -i cert-manager-google-cas-issuer jetstack/cert-manager-google-cas-issuer -n cert-manager --wait
+
+# Grant KSA ability to request CAS certificates using Workload Identity Federation for GKE
+# gcloud privateca pools add-iam-policy-binding my-ca --project gregbray-cas --location us-central1 \
+#  --member "serviceAccount:gregbray-vpc.svc.id.goog[cert-manager/cert-manager-google-cas-issuer]" \
+#  --role=roles/privateca.certificateRequester
+
+# Create Cluster Issuer for CAS https://github.com/cert-manager/google-cas-issuer?tab=readme-ov-file#configuring-the-issuer
+apiVersion: cas-issuer.jetstack.io/v1beta1
+kind: GoogleCASClusterIssuer
+metadata:
+  name: googlecasclusterissuer-sample
+spec:
+  project: gregbray-cas
+  location: us-central1
+  caPoolId: my-ca
+  # credentials are optional if workload identity is enabled
+  #credentials:
+  #  name: "googlesa"
+  #  key: "$PROJECT_ID-key.json"
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: demo-certificate
+  namespace: default
+spec:
+  # The secret name to store the signed certificate
+  secretName: demo-cert-tls
+  # Common Name
+  commonName: cert-manager.io.demo
+  # DNS SAN
+  dnsNames:
+    - cert-manager.io
+    - jetstack.io
+  # Duration of the certificate
+  duration: 24h
+  # Renew 8 hours before the certificate expiration
+  renewBefore: 8h
+  # Important: Ensure the issuerRef is set to the issuer or cluster issuer configured earlier
+  issuerRef:
+    group: cas-issuer.jetstack.io
+    kind: GoogleCASClusterIssuer # or GoogleCASIssuer
+    name: googlecasclusterissuer-sample # or googlecasissuer-sample

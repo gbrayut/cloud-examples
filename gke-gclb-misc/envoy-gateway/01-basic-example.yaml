@@ -1,0 +1,114 @@
+# Basic Envoy Gateway example modified from https://github.com/envoyproxy/gateway/blob/main/examples/kubernetes/quickstart.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eg-ingress
+---
+# Envoy Gateway requires users to define their own GatewayClasses
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: eg
+  namespace: eg-ingress
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+# Shared eg-ingress gateway instance for various test routes
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: eg
+  namespace: eg-ingress
+spec:
+  gatewayClassName: eg
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+    - name: tls
+      protocol: TLS
+      hostname: passthrough.example.com
+      port: 6443
+      tls:
+        mode: Passthrough
+---
+# Create a test http backend
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backend
+  namespace: eg-ingress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: eg-ingress
+  labels:
+    app: backend
+    service: backend
+spec:
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+  selector:
+    app: backend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: eg-ingress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: backend
+        version: v1
+    spec:
+      serviceAccountName: backend
+      containers:
+        # https://console.cloud.google.com/artifacts/docker/k8s-staging-gateway-api/us/gcr.io/echo-basic
+        - image: gcr.io/k8s-staging-gateway-api/echo-basic:v20250725-v1.3.0-96-g58fc576e
+          imagePullPolicy: IfNotPresent
+          name: backend
+          ports:
+            - containerPort: 3000
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+---
+# Basic HTTPRoute for Envoy Gateway
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: backend
+  namespace: eg-ingress
+spec:
+  parentRefs:
+    - name: eg
+  hostnames:
+    - "www.example.com"
+  rules:
+    - backendRefs:
+        - group: ""
+          kind: Service
+          name: backend
+          port: 3000
+          weight: 1
+      matches:
+        - path:
+            type: PathPrefix
+            value: /
