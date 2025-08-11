@@ -27,6 +27,7 @@ spec:
       topologySpreadConstraints:
       - maxSkew: 1  # this is how many additional pods are allowed to running on a host/zone compared to other cohort members
         topologyKey: topology.kubernetes.io/zone  # or kubernetes.io/hostname
+        minDomains: 3  # default is 1, so must set min to 3 if you want to force zonal topologyKey scale up from zero
         whenUnsatisfiable: DoNotSchedule    # Note this will still NOT ensure perfect spread as there are many cases where skew can occur
         labelSelector:
           matchLabels:
