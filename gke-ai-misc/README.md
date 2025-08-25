@@ -46,7 +46,7 @@ This should not be considered a production ready deployment as you likely will w
 BASE=https://raw.githubusercontent.com/gbrayut/cloud-examples/refs/heads/main/gke-ai-misc   # Or use local path to cloned repo
 
 # Create deployment, usually takes 5-10 minutes to become ready
-kubectl apply -n gemma -f $BASE/vllm-3-1b-it.yaml
+kubectl apply -n gemma -f $BASE/vllm-gemma3-1b.yaml
 kubectl wait -n gemma --for=condition=Available --timeout=1800s deployment/vllm-gemma-3-1b
 # can also follow logs for troubleshooting
 kubectl logs -n gemma deploy/vllm-gemma-3-1b -f
