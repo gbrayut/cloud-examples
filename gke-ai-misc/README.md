@@ -80,6 +80,19 @@ vllm-gemma-3-1b-6fd5799bb4-nc6tb   1/1     Running   0          56m     10.120.1
 vllm-gemma-3-1b-6fd5799bb4-rp879   0/1     Pending   0          4m54s   <none>        <none>                                    
 ```
 
+# Cleanup
+
+To reduce charges you can delete the gemma namespace when finished and either delete the GPU node pool or resize it to zero nodes:
+
+```shell
+# Remove all resources in namespace
+kubectl delete ns gemma
+# Change nodepool to zero nodes
+gcloud container clusters resize gke-iowa --node-pool multi-a2-1g-5gb --region us-central1 --num-nodes=0 --quiet
+# Or delete it entirely if no longer needed
+gcloud container node-pools delete multi-a2-1g-5gb --cluster gke-iowa --region us-central1 --quiet
+```
+
 # Troubleshooting
 
 If you see this error messages in the logs, try increasing the `--gpu_memory_utilization` value:
