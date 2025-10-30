@@ -1,0 +1,163 @@
+# Exported url-map generated from main.tf terraform. Full SDK docs at https://cloud.google.com/compute/docs/reference/rest/v1/urlMaps
+# gcloud compute url-maps describe myurlmap > result-url-map.yaml
+creationTimestamp: '2025-10-29T19:42:29.564-07:00'
+defaultUrlRedirect:
+  hostRedirect: example.com
+  pathRedirect: /matched-default
+  redirectResponseCode: SEE_OTHER
+description: a description
+fingerprint: 07BZgYeJkFM=
+hostRules:
+- hosts:
+  - '*.example.com'
+  - example.com
+  pathMatcher: all-com-paths
+- hosts:
+  - www.example.net
+  - example.net
+  pathMatcher: all-net-paths
+id: '1715479579703864955'
+kind: compute#urlMap
+name: myurlmap
+
+
+pathMatchers:
+- name: all-net-paths
+  defaultRouteAction:
+    corsPolicy:
+      allowHeaders:
+      - X-Custom-Header
+      - Upgrade-Insecure-Requests
+      allowMethods:
+      - GET
+      allowOrigins:
+      - https://test.example.com
+      - http://test.example.com
+      maxAge: 7200
+    weightedBackendServices:
+    - backendService: https://www.googleapis.com/compute/v1/projects/gregbray-vpc/global/backendServices/gkegw1-s6d4-app-1-whereami-80-d3zrao4p3b1p
+      headerAction:
+        requestHeadersToAdd:
+        - headerName: x-default-request
+          headerValue: 'true'
+          replace: true
+        responseHeadersToAdd:
+        - headerName: x-default-response
+          headerValue: 'true'
+      weight: 50
+    - backendService: https://www.googleapis.com/compute/v1/projects/gregbray-vpc/global/backendServices/gkegw1-s6d4-app-2-whereami-80-3gjwc9e6pii6
+      headerAction:
+        requestHeadersToAdd:
+        - headerName: x-default-request
+          headerValue: 'true'
+          replace: true
+        responseHeadersToAdd:
+        - headerName: x-default-response
+          headerValue: 'true'
+      weight: 50
+  description: example of a basic path_rule config
+  headerAction:
+    requestHeadersToAdd:
+    - headerName: x-request-test
+      headerValue: all-net-paths
+      replace: true
+    responseHeadersToAdd:
+    - headerName: x-response-test
+      headerValue: all-net-paths
+  pathRules:
+  - paths:
+    - /app1
+    service: https://www.googleapis.com/compute/v1/projects/gregbray-vpc/global/backendServices/gkegw1-s6d4-app-1-whereami-80-d3zrao4p3b1p
+  - paths:
+    - /app2
+    service: https://www.googleapis.com/compute/v1/projects/gregbray-vpc/global/backendServices/gkegw1-s6d4-app-2-whereami-80-3gjwc9e6pii6
+
+
+- defaultService: https://www.googleapis.com/compute/v1/projects/gregbray-vpc/global/backendServices/gke-sa-bes2
+  name: all-com-paths
+  routeRules:
+  - headerAction:
+      requestHeadersToAdd:
+      - headerName: AddSomethingElse
+        headerValue: MyOtherValue
+        replace: true
+      requestHeadersToRemove:
+      - x-remove-request
+      responseHeadersToAdd:
+      - headerName: x-response-test
+        headerValue: match-one
+      responseHeadersToRemove:
+      - server
+      - x-real-server
+    matchRules:
+    - ignoreCase: true
+      prefixMatch: /one/
+    priority: 100
+    routeAction:
+      corsPolicy:
+        allowMethods:
+        - GET
+        - POST
+        allowOrigins:
+        - https://*.example.org
+        - http://example.com
+        - https://example.org
+        maxAge: 86400
+      urlRewrite:
+        pathPrefixRewrite: /
+    service: https://www.googleapis.com/compute/v1/projects/gregbray-vpc/global/backendServices/gkegw1-s6d4-app-1-whereami-80-d3zrao4p3b1p
+  - headerAction:
+      responseHeadersToAdd:
+      - headerName: x-real-server
+        headerValue: match-two
+        replace: true
+    matchRules:
+    - prefixMatch: /two/
+    priority: 200
+    routeAction:
+      urlRewrite:
+        pathPrefixRewrite: /
+    service: https://www.googleapis.com/compute/v1/projects/gregbray-vpc/global/backendServices/gkegw1-s6d4-app-2-whereami-80-3gjwc9e6pii6
+  - matchRules:
+    - pathTemplateMatch: /template/{first=*}/test/{rest=**}
+    priority: 300
+    routeAction:
+      urlRewrite:
+        pathTemplateRewrite: /{first}-{rest}/
+    service: https://www.googleapis.com/compute/v1/projects/gregbray-vpc/global/backendServices/gke-sa-bes2
+  - matchRules:
+    - ignoreCase: true
+      prefixMatch: /redirect
+    priority: 400
+    urlRedirect:
+      hostRedirect: example.com
+      pathRedirect: /
+      redirectResponseCode: TEMPORARY_REDIRECT
+      stripQuery: true
+  - headerAction:
+      responseHeadersToAdd:
+      - headerName: x-testing
+        headerValue: canary
+        replace: true
+    matchRules:
+    - ignoreCase: true
+      prefixMatch: /canary
+    priority: 500
+    routeAction:
+      corsPolicy:
+        allowMethods:
+        - GET
+        allowOrigins:
+        - '*'
+        maxAge: 600
+      weightedBackendServices:
+      - backendService: https://www.googleapis.com/compute/v1/projects/gregbray-vpc/global/backendServices/gkegw1-s6d4-app-1-whereami-80-d3zrao4p3b1p
+        weight: 90
+      - backendService: https://www.googleapis.com/compute/v1/projects/gregbray-vpc/global/backendServices/gkegw1-s6d4-app-2-whereami-80-3gjwc9e6pii6
+        weight: 10
+selfLink: https://www.googleapis.com/compute/v1/projects/gregbray-vpc/global/urlMaps/myurlmap
+tests:
+- description: ''
+  host: example.com
+  path: /one/
+  service: https://compute.googleapis.com/compute/v1/projects/gregbray-vpc/global/backendServices/gkegw1-s6d4-app-1-whereami-80-d3zrao4p3b1p

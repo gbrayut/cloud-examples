@@ -1,0 +1,82 @@
+defaultService: projects/gregbray-vpc/global/backendServices/gke-sa-bes2
+name: all-com-paths
+routeRules:
+- matchRules:
+  - ignoreCase: true
+    prefixMatch: /one/
+  priority: 100
+  service: projects/gregbray-vpc/global/backendServices/gkegw1-s6d4-app-1-whereami-80-d3zrao4p3b1p
+  routeAction:
+    corsPolicy:
+      allowMethods:
+      - GET
+      - POST
+      maxAge: 86400
+      allowOrigins:
+      - https://*.example.org
+      - http://example.com
+      - https://example.org
+    urlRewrite:
+      pathPrefixRewrite: /
+  headerAction:
+    responseHeadersToAdd:
+    - headerValue: match-one
+      headerName: x-response-test
+    responseHeadersToRemove:
+    - server
+    - x-real-server
+    requestHeadersToAdd:
+    - headerValue: MyOtherValue
+      headerName: AddSomethingElse
+      replace: true
+    requestHeadersToRemove:
+    - x-remove-request
+- matchRules:
+  - prefixMatch: /two/
+  priority: 200
+  service: projects/gregbray-vpc/global/backendServices/gkegw1-s6d4-app-2-whereami-80-3gjwc9e6pii6
+  routeAction:
+    urlRewrite:
+      pathPrefixRewrite: /
+  headerAction:
+    responseHeadersToAdd:
+    - headerValue: match-two
+      headerName: x-real-server
+      replace: true
+- matchRules:
+  - pathTemplateMatch: /template/{first=*}/test/{rest=**}
+  priority: 300
+  service: projects/gregbray-vpc/global/backendServices/gke-sa-bes2
+  routeAction:
+    urlRewrite:
+      pathTemplateRewrite: /{first}-{rest}/
+- urlRedirect:
+    pathRedirect: /
+    stripQuery: true
+    hostRedirect: example.com
+    redirectResponseCode: TEMPORARY_REDIRECT
+  matchRules:
+  - ignoreCase: true
+    prefixMatch: /redirect
+  priority: 400
+- matchRules:
+  - ignoreCase: true
+    prefixMatch: /canary
+  priority: 500
+  routeAction:
+    corsPolicy:
+      allowMethods:
+      - GET
+      maxAge: 600
+      allowOrigins:
+      - '*'
+    weightedBackendServices:
+    - backendService: projects/gregbray-vpc/global/backendServices/gkegw1-s6d4-app-1-whereami-80-d3zrao4p3b1p
+      weight: 90
+    - backendService: projects/gregbray-vpc/global/backendServices/gkegw1-s6d4-app-2-whereami-80-3gjwc9e6pii6
+      weight: 10
+  headerAction:
+    responseHeadersToAdd:
+    - headerValue: canary
+      headerName: x-testing
+      replace: true

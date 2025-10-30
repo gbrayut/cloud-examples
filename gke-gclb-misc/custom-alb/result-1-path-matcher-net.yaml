@@ -1,0 +1,49 @@
+description: example of a basic path_rule config
+name: all-net-paths
+defaultRouteAction:
+  corsPolicy:
+    allowMethods:
+    - GET
+    allowHeaders:
+    - X-Custom-Header
+    - Upgrade-Insecure-Requests
+    maxAge: 7200
+    allowOrigins:
+    - https://test.example.com
+    - http://test.example.com
+  weightedBackendServices:
+  - backendService: projects/gregbray-vpc/global/backendServices/gkegw1-s6d4-app-1-whereami-80-d3zrao4p3b1p
+    headerAction:
+      responseHeadersToAdd:
+      - headerValue: 'true'
+        headerName: x-default-response
+      requestHeadersToAdd:
+      - headerValue: 'true'
+        headerName: x-default-request
+        replace: true
+    weight: 50
+  - backendService: projects/gregbray-vpc/global/backendServices/gkegw1-s6d4-app-2-whereami-80-3gjwc9e6pii6
+    headerAction:
+      responseHeadersToAdd:
+      - headerValue: 'true'
+        headerName: x-default-response
+      requestHeadersToAdd:
+      - headerValue: 'true'
+        headerName: x-default-request
+        replace: true
+    weight: 50
+pathRules:
+- paths:
+  - /app1
+  service: projects/gregbray-vpc/global/backendServices/gkegw1-s6d4-app-1-whereami-80-d3zrao4p3b1p
+- paths:
+  - /app2
+  service: projects/gregbray-vpc/global/backendServices/gkegw1-s6d4-app-2-whereami-80-3gjwc9e6pii6
+headerAction:
+  responseHeadersToAdd:
+  - headerValue: all-net-paths
+    headerName: x-response-test
+  requestHeadersToAdd:
+  - headerValue: all-net-paths
+    headerName: x-request-test
+    replace: true
