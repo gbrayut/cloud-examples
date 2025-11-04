@@ -1,0 +1,100 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: td-mtls-ksa
+  namespace: td-mtls
+  annotations:
+    iam.gke.io/gcp-service-account: "test-sa@gregbray-vpc.iam.gserviceaccount.com"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whereami
+  namespace: td-mtls
+  labels:
+    app: whereami
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: whereami
+  template:
+    metadata:
+      annotations:
+        cloud.google.com/enableManagedCerts: "true"
+      labels:
+        app: whereami
+    spec:
+      serviceAccountName: td-mtls-ksa
+      containers:
+      - name: frontend
+        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.8
+        ports:
+        - containerPort: 8080
+---
+# From https://storage.googleapis.com/traffic-director/security/ga/gateway_sample_xdsv3.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: mesh-gateway
+  name: mesh-gateway
+  namespace: td-mtls
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mesh-gateway
+  template:
+    metadata:
+      labels:
+        app: mesh-gateway
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      containers:
+      - image: google/cloud-sdk:slim
+        name: gcloud-testing
+        command: ["sleep","infinity"]
+      - name: envoy
+        image: envoyproxy/envoy:v1.16.3
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: "2"
+            memory: 1Gi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        env:
+        - name: ENVOY_UID
+          value: "1337"
+        volumeMounts:
+          - mountPath: /etc/envoy
+            name: envoy-bootstrap
+          - mountPath: /var/run/secrets/workload-spiffe-credentials
+            name: gke-workload-certificates
+            readOnly: true
+      initContainers:
+      - name: td-bootstrap-writer
+        image: gcr.io/trafficdirector-prod/xds-client-bootstrap-generator
+        imagePullPolicy: Always
+        args:
+          - --project_number=503076227230
+          - --network_name=gke-vpc
+          - --bootstrap_file_output_path=/var/lib/data/envoy.yaml
+          - --traffic_director_url=trafficdirector.googleapis.com:443
+          - --use_workload_certificates
+        volumeMounts:
+          - mountPath: /var/lib/data
+            name: envoy-bootstrap
+      securityContext:
+        fsGroup: 1337
+      serviceAccountName: td-mtls-ksa
+      volumes:
+        - name: envoy-bootstrap
+          emptyDir: {}
+        - name: gke-workload-certificates
+          csi:
+            driver: workloadcertificates.security.cloud.google.com

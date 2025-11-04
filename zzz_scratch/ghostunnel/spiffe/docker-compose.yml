@@ -1,0 +1,48 @@
+version: "3.7"
+
+networks:
+  test:
+    external: true
+
+services:
+  # target backend server. Test using curl -v localhost:17001/headers
+  httpbin:
+    profiles: ["services"]
+    image: kennethreitz/httpbin
+    networks:
+      - test
+    ports:
+      - "17001:80"
+  # ghostunnel server. Test using curl -v https://localhost:18001/headers (with client certs for mTLS)
+  ghostserver:
+    profiles: ["services"]
+    image: ghostunnel/ghostunnel
+    networks:
+      - test
+    volumes:
+      - shared-conf:/var/run/shared-conf
+    working_dir: /var/run/shared-conf
+    command: server --listen=0.0.0.0:8001 --target=httpbin:80 --cacert CertAuth.crt
+      --cert ghostserver.crt --key ghostserver.key --allow-all --unsafe-target
+      --use-workload-api-addr what-to-put-here
+    ports:
+      - "18001:8001"
+  # ghostunnel client. Test using: curl -v localhost:19001/headers
+  ghostclient:
+    profiles: ["services"]
+    image: ghostunnel/ghostunnel
+    networks:
+      - test
+    volumes:
+      - shared-conf:/var/run/shared-conf
+    working_dir: /var/run/shared-conf
+    command: client --listen=0.0.0.0:9001 --target=ghostserver:8001 --cacert CertAuth.crt
+      --cert ghostclient.crt --key ghostclient.key --unsafe-listen
+    ports:
+      - "19001:9001"
+
+volumes:
+  shared-conf:
+#volume mounted on host at /var/lib/docker/volumes/ghostunnel_shared-conf/_data
+# delete data using: docker-compose down --volumes --remove-orphans 
+
