@@ -22,9 +22,13 @@ metadata:
 spec:
   gatewayClassName: eg
   listeners:
+    # Listener for HTTPRoutes
     - name: http
       protocol: HTTP
       port: 80
+    # TODO: Listener on port 443 for HTTPS/gRPC support
+
+    # Listener bound to specific hostname and using SNI based Passthrough (see 02-passthrough.yaml)
     - name: tls
       protocol: TLS
       hostname: passthrough.example.com
@@ -100,7 +104,7 @@ spec:
   parentRefs:
     - name: eg
   hostnames:
-    - "www.example.com"
+    - "www.example.com"   # L7 host header based routing on shared gateway
   rules:
     - backendRefs:
         - group: ""

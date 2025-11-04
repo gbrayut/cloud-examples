@@ -68,3 +68,4 @@ After the service is running, you can use annotations to configure where the TLS
 
 * OSS [Envoy Gateway](../gke-gclb-misc/envoy-gateway) for in-cluster L7 or Passthrough via Kubernetes Gateway API
 * TODO: GKE Gateway example with Certificate Manager for regional/global certificates
+* TODO: GCP TrustConfig example for frontend mTLS (likely requires gcloud as no KCC resource)

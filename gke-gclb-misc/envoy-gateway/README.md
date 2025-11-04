@@ -1,6 +1,6 @@
 # Envoy Gateway in GKE
 
-[Envoy Gateway](https://gateway.envoyproxy.io/docs/) is an open source project for managing Envoy Proxy as a standalone or Kubernetes-based application gateway. Kubernetes Gateway API resources are used to dynamically provision and configure the managed Envoy Proxies.
+[Envoy Gateway](https://gateway.envoyproxy.io) is an open source project for managing Envoy Proxy as a standalone or Kubernetes-based application gateway. Kubernetes Gateway API resources are used to dynamically provision and configure the managed Envoy Proxies.
 
 ```shell
 # https://gateway.envoyproxy.io/docs/tasks/quickstart/
@@ -89,3 +89,32 @@ curl -vk --resolve passthrough.example.com:6443:$GW_IP https://passthrough.examp
 curl -v --cacert /tmp/ca.crt --cert /tmp/tls.crt --key /tmp/tls.key \
   --resolve passthrough.example.com:6443:$GW_IP https://passthrough.example.com:6443
 ```
+
+# More Examples
+
+* TODO: How to enable/view logs for envoy gatway
+* HTTPRoute with frontend mTLS validation
+
+
+
+
+
+TODO:
+- figure out how to add annotations to the generated service resource
+- capture manifests for services and envoy deployment. Or template out helm chart
+- gcloud command to download cert from cert manager? don't think that exists so maybe secret manager instead
+
+kubectl get secret test-cert -o json | jq --raw-output '.data | map_values(@base64d) | to_entries[] | .value'
+
+
+
+
+$ kubectl logs -n eg-ingress passthrough-echoserver-7fb67bc45d-ttkhw 
+Starting server, listening on port 8443 (https)
+Starting server, listening on port 3000 (http)
+Starting server, listening on port 3001 (h2c)
+Echoing back request made to / to client (10.120.2.101:53978)
+Echoing back request made to / to client (10.120.2.101:34864)
+2025/07/25 22:49:59 http: TLS handshake error from 10.120.2.101:54076: local error: tls: bad record MAC
+2025/07/25 22:51:20 http: TLS handshake error from 10.120.2.101:43548: tls: failed to verify certificate: x509: certificate has expired or is not yet valid: current time 2025-07-25T22:51:20Z is after 2024-04-09T22:55:33Z
+2025/07/25 22:56:27 http: TLS handshake error from 10.120.2.101:37684: tls: failed to verify certificate: x509: certificate signed by unknown authority

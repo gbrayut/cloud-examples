@@ -8,7 +8,7 @@ terraform {
   }
 }
 
-# Creates add a target http proxy and global forwarding rule
+# Creates a target http proxy and global forwarding rule
 resource "google_compute_target_http_proxy" "example" {
   name    = "example-proxy"
   url_map = google_compute_url_map.urlmap.id
@@ -31,7 +31,7 @@ resource "google_compute_url_map" "urlmap" {
   #default_service = "https://www.googleapis.com/compute/v1/projects/gregbray-vpc/global/backendServices/gke-sa-bes2"  # instead of datasources or resources can also use static strings for backends
 
   # https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_url_map#nested_default_route_action
-  # This is only for requests that don't match the any host_rule sections below 
+  # This is only for requests that don't match any host_rule sections below 
   #default_route_action {
   #  weighted_backend_services {
   #    backend_service = data.google_compute_backend_service.bes2.id
@@ -98,7 +98,7 @@ resource "google_compute_url_map" "urlmap" {
     default_route_action {
       # https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_url_map#nested_path_matcher_path_matcher_route_rules_route_rules_route_action_cors_policy
       cors_policy {
-        disabled = false # Required to generate cors response headers from the LB
+        disabled = false            # Dynamically generate cors response headers from the LB
         #allow_headers = ["X-Custom-Header", "Upgrade-Insecure-Requests"]  # configures Access-Control-Allow-Headers header (not working?)
         #allow_credentials = true   # configures Access-Control-Allow-Credentials header (Defaults to false)        
         allow_methods = ["GET"]     # configures Access-Control-Allow-Methods header
@@ -156,6 +156,7 @@ resource "google_compute_url_map" "urlmap" {
     name            = "all-com-paths"
     default_service = data.google_compute_backend_service.bes2.id
 
+    # https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_url_map#nested_path_matcher_path_matcher_route_rules
     route_rules {
       priority = 100  # lowest priority match wins
       service  = data.google_compute_backend_service.app1.id  # (or can define weighted_backend_services in route_action below)
@@ -171,8 +172,8 @@ resource "google_compute_url_map" "urlmap" {
         }
         # https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_url_map#nested_path_matcher_path_matcher_route_rules_route_rules_route_action_cors_policy
         cors_policy {
-          disabled = false # Required to generate cors response headers from the LB
-          allow_methods = ["GET"]   # configures ccess-Control-Allow-Methods header
+          disabled = false # Dynamically generate cors response headers from the LB
+          allow_methods = ["GET"]   # configures Access-Control-Allow-Methods header
           allow_origins = ["*"]
         }
       }
@@ -248,7 +249,7 @@ resource "google_compute_url_map" "urlmap" {
         prefix_match = "/canary"
       }
       route_action {
-        # add weighted_backend_services with app1 and app2 backends at 50/50      route_action {
+        # route canary traffic across app1 and app2 backends at 9 to 1 ratio 
         weighted_backend_services {
           backend_service = data.google_compute_backend_service.app1.id
           weight          = 90
@@ -286,7 +287,7 @@ data "google_compute_backend_service" "bes2" {
   project = "gregbray-vpc"
 }
 
-# These are backends managed by GKE. Their names will change so you should create standalone NEGs instead
+# These are backends managed by GKE. Their names could change so you should create standalone NEGs instead
 data "google_compute_backend_service" "app1" {
   name    = "gkegw1-s6d4-app-1-whereami-80-d3zrao4p3b1p"
   project = "gregbray-vpc"
@@ -296,7 +297,7 @@ data "google_compute_backend_service" "app2" {
   project = "gregbray-vpc"
 }
 
-# Reference to existing check that Requires 200 response for "/" https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_http_health_check
+# Reference to existing check that requires HTTP 200 response code for "/" https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_http_health_check
 data "google_compute_health_check" "default" {
   name    = "http-basic-check"
   project = "gregbray-vpc"

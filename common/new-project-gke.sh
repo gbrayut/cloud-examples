@@ -77,7 +77,7 @@ gcloud container --project=$DEVSHELL_PROJECT_ID node-pools create "spot-pool" --
 
 # create namespaces and launch pods simulating two workloads with kubernetes services
 kubectl create ns app-1
-kubectl run test-1 -n app-1 --image=us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.9 --port 8080 --expose
+kubectl run test-1 -n app-1 --image=us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.24 --port 8080 --expose
 
 kubectl create ns app-2
 # pod with node selector and toleration https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
