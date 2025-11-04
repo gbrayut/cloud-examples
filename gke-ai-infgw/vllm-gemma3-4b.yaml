@@ -1,4 +1,4 @@
-# Based on https://cloud.google.com/kubernetes-engine/docs/tutorials/serve-gemma-gpu-vllm#deploy-vllm
+# Based on https://docs.cloud.google.com/kubernetes-engine/docs/tutorials/serve-gemma-gpu-vllm#deploy-vllm
 apiVersion: apps/v1
 kind: Deployment
 metadata:

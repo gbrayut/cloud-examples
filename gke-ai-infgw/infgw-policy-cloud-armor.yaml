@@ -13,7 +13,7 @@ spec:
 
     securityPolicy: uc1-security-policy   # See gke-gclb-misc/cloud-armor/README.md for example regional Cloud Armor policy
   targetRef:
-    group: "inference.networking.x-k8s.io"
+    group: "inference.networking.k8s.io"
     kind: InferencePool
     name: vllm-gemma-3-1b   # Cloud Armor rule should only apply to this InferencePool instance, but seems to apply to all InferencePool instances
 ---
