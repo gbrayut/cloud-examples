@@ -1,0 +1,102 @@
+version: "3.7"
+
+networks:
+  test:
+    external: true
+
+services:
+  # create CA crt and key https://github.com/square/certstrap
+  certstrap_init:
+    profiles: ["certstrap-init"]
+    image: squareup/certstrap
+    volumes:
+      - shared-conf:/out
+    command: init --common-name "CertAuth" --passphrase ""
+  # create server csr
+  certstrap_server:
+    profiles: ["certstrap-sign"]
+    image: squareup/certstrap
+    volumes:
+      - shared-conf:/out
+    command: request-cert --domain ghostserver --passphrase ""
+  # sign server csr to create crt and key
+  certstrap_server_sign:
+    depends_on: ["certstrap_server"]
+    profiles: ["certstrap-sign"]
+    image: squareup/certstrap
+    volumes:
+      - shared-conf:/out
+    command: sign ghostserver --CA CertAuth
+  # create client csr
+  certstrap_client:
+    profiles: ["certstrap-sign"]
+    image: squareup/certstrap
+    volumes:
+      - shared-conf:/out
+    command: request-cert --domain ghostclient --passphrase ""
+  # sign client csr to create crt and key
+  certstrap_client_sign:
+    depends_on: ["certstrap_client"]
+    profiles: ["certstrap-sign"]
+    image: squareup/certstrap
+    volumes:
+      - shared-conf:/out
+    command: sign ghostclient --CA CertAuth
+  
+  # target backend server. Test using curl -v localhost:17001/headers
+  httpbin:
+    profiles: ["services"]
+    image: kennethreitz/httpbin
+    networks:
+      - test
+    ports:
+      - "17001:80"
+  # ghostunnel server. Test using curl -v https://localhost:18001/headers (with client certs for mTLS)
+  ghostserver:
+    profiles: ["services"]
+    image: ghostunnel/ghostunnel
+    networks:
+      - test
+    volumes:
+      - shared-conf:/var/run/shared-conf
+    working_dir: /var/run/shared-conf
+    command: server --listen=0.0.0.0:8001 --target=httpbin:80 --cacert CertAuth.crt
+      --cert ghostserver.crt --key ghostserver.key --allow-all --unsafe-target
+    ports:
+      - "18001:8001"
+  # ghostunnel client. Test using: curl -v localhost:19001/headers
+  ghostclient:
+    profiles: ["services"]
+    image: ghostunnel/ghostunnel
+    networks:
+      - test
+    volumes:
+      - shared-conf:/var/run/shared-conf
+    working_dir: /var/run/shared-conf
+    command: client --listen=0.0.0.0:9001 --target=ghostserver:8001 --cacert CertAuth.crt
+      --cert ghostclient.crt --key ghostclient.key --unsafe-listen
+    ports:
+      - "19001:9001"
+
+volumes:
+  shared-conf:
+#volume mounted on host at /var/lib/docker/volumes/ghostunnel_shared-conf/_data
+# delete data using: docker-compose down --volumes --remove-orphans 
+
+#docker run --rm ghostunnel/ghostunnel -- help
+
+#openssl s_client -connect localhost:8443 -cert test-keys/client-combined.pem \
+#    -key test-keys/client-combined.pem -CAfile test-keys/cacert.pem
+
+
+#docker exec -it ghostunnel_ghostserver_1 /bin/sh
+
+#docker-compose --profile certstrap-init up
+#docker-compose --profile certstrap-sign up
+#docker-compose --profile services up
+
+# Manually generate more certs:
+#docker run --rm -v ghostunnel_shared-conf:/out squareup/certstrap -- request-cert --domain whoami-1 --passphrase ""
+#docker run --rm -v ghostunnel_shared-conf:/out squareup/certstrap -- sign whoami-1 --CA CertAuth
+#docker run --rm -v ghostunnel_shared-conf:/out squareup/certstrap -- request-cert --domain '*.example.com' --passphrase ""
+#docker run --rm -v ghostunnel_shared-conf:/out squareup/certstrap -- sign '*.example.com' --CA CertAuth
