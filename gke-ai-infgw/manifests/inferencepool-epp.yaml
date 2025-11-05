@@ -1,4 +1,11 @@
 ---
+# Source: inferencepool/templates/gke.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: release-name-metrics-reader-sa
+  namespace: gemma
+---
 # Source: inferencepool/templates/rbac.yaml
 apiVersion: v1
 kind: ServiceAccount
@@ -7,23 +14,62 @@ metadata:
   namespace: gemma
   labels:
     app.kubernetes.io/name: release-name-epp
-    app.kubernetes.io/version: "v0.4.0"
+    app.kubernetes.io/version: "v1.1.0"
+---
+# Source: inferencepool/templates/gke.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: release-name-metrics-reader-secret
+  namespace: gemma
+  labels:
+    app.kubernetes.io/name: release-name-epp
+    app.kubernetes.io/version: "v1.1.0"
+  annotations:
+    kubernetes.io/service-account.name: release-name-metrics-reader-sa
+type: kubernetes.io/service-account-token
+---
+# Source: inferencepool/templates/epp-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: release-name-epp
+  namespace: gemma
+data:
+  default-plugins.yaml: |
+    apiVersion: inference.networking.x-k8s.io/v1alpha1
+    kind: EndpointPickerConfig
+    plugins:
+    - type: queue-scorer
+    - type: kv-cache-utilization-scorer
+    - type: prefix-cache-scorer
+    schedulingProfiles:
+    - name: default
+      plugins:
+      - pluginRef: queue-scorer
+      - pluginRef: kv-cache-utilization-scorer
+      - pluginRef: prefix-cache-scorer
+---
+# Source: inferencepool/templates/gke.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gemma-release-name-metrics-reader
+rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
 ---
 # Source: inferencepool/templates/rbac.yaml
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: release-name-epp
+  name: "release-name-gemma-epp"
   labels:
     app.kubernetes.io/name: release-name-epp
-    app.kubernetes.io/version: "v0.4.0"
+    app.kubernetes.io/version: "v1.1.0"
 rules:
-- apiGroups: ["inference.networking.x-k8s.io"]
-  resources: ["inferencemodels", "inferencepools"]
-  verbs: ["get", "watch", "list"]
-- apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["get", "watch", "list"]
 - apiGroups:
   - authentication.k8s.io
   resources:
@@ -36,18 +82,99 @@ rules:
   - subjectaccessreviews
   verbs:
   - create
+- nonResourceURLs:
+  - "/metrics"
+  verbs:
+  - get
+---
+# Source: inferencepool/templates/gke.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gemma-release-name-metrics-reader-role-binding
+subjects:
+- kind: ServiceAccount
+  name: release-name-metrics-reader-sa
+  namespace: gemma
+roleRef:
+  kind: ClusterRole
+  name: gemma-release-name-metrics-reader
+  apiGroup: rbac.authorization.k8s.io
 ---
 # Source: inferencepool/templates/rbac.yaml
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: release-name-epp
+  name: "release-name-gemma-epp"
 subjects:
 - kind: ServiceAccount
   name: release-name-epp
   namespace: gemma
 roleRef:
+  apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
+  name: "release-name-gemma-epp"
+---
+# Source: inferencepool/templates/gke.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: release-name-metrics-reader-secret-read
+rules:
+- resources:
+  - secrets
+  apiGroups: [""]
+  verbs: ["get", "list", "watch"]
+  resourceNames: ["release-name-metrics-reader-secret"]
+---
+# Source: inferencepool/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: release-name-epp
+  namespace: gemma
+  labels:
+    app.kubernetes.io/name: release-name-epp
+    app.kubernetes.io/version: "v1.1.0"
+rules:
+- apiGroups: ["inference.networking.x-k8s.io"]
+  resources: ["inferenceobjectives"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: ["inference.networking.k8s.io"]
+  resources: ["inferencepools"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "watch", "list"]
+---
+# Source: inferencepool/templates/gke.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gmp-system:collector:gemma-release-name-metrics-reader-secret-read
+  namespace: gemma
+roleRef:
+  name: release-name-metrics-reader-secret-read
+  kind: Role
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- name: collector
+  namespace: gmp-system
+  kind: ServiceAccount
+---
+# Source: inferencepool/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: release-name-epp
+  namespace: gemma
+subjects:
+- kind: ServiceAccount
+  name: release-name-epp
+  namespace: gemma
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
   name: release-name-epp
 ---
 # Source: inferencepool/templates/epp-service.yaml
@@ -58,7 +185,7 @@ metadata:
   namespace: gemma
   labels:
     app.kubernetes.io/name: release-name-epp
-    app.kubernetes.io/version: "v0.4.0"
+    app.kubernetes.io/version: "v1.1.0"
 spec:
   selector:
     inferencepool: release-name-epp
@@ -79,9 +206,17 @@ metadata:
   namespace: gemma
   labels:
     app.kubernetes.io/name: release-name-epp
-    app.kubernetes.io/version: "v0.4.0"
+    app.kubernetes.io/version: "v1.1.0"
 spec:
   replicas: 1
+  strategy:
+    # The current recommended EPP deployment pattern is to have a single active replica. This ensures 
+    # optimal performance of the stateful operations such prefix cache aware scorer.
+    # The Recreate strategy the old replica is killed immediately, and allow the new replica(s) to 
+    # quickly take over. This is particularly important in the high availability set up with leader
+    # election, as the rolling update strategy would prevent the old leader being killed because 
+    # otherwise the maxUnavailable would be 100%.
+    type: Recreate
   selector:
     matchLabels:
       inferencepool: release-name-epp
@@ -95,21 +230,27 @@ spec:
       terminationGracePeriodSeconds: 130
       containers:
       - name: epp
-        image: registry.k8s.io/gateway-api-inference-extension/epp:v0.4.0
+        image: registry.k8s.io/gateway-api-inference-extension/epp:v1.1.0
         imagePullPolicy: Always
         args:
-        - -poolName
+        - --pool-name
         - release-name
-        - -poolNamespace
+        # The pool namespace is optional because EPP can default to the NAMESPACE env var.
+        # We still keep this here so that the template works with older versions of EPP, or other
+        # distros of EPP which may not have implemented the NAMESPACE env var defaulting behavior.
+        - --pool-namespace
         - gemma
-        - -v
-        - "3"
-        - -grpcPort
-        - "9002"
-        - -grpcHealthPort
-        - "9003"
-        - -metricsPort
-        - "9090"
+        - --pool-group
+        - "inference.networking.k8s.io"
+        - --zap-encoder
+        - "json"
+        - --config-file
+        - "/config/default-plugins.yaml"
+        # Pass additional flags via the inferenceExtension.flags field in values.yaml.
+        - "--v"
+        - "1"
+        - "--tracing"
+        - "false"
         ports:
         - name: grpc
           containerPort: 9002
@@ -127,34 +268,20 @@ spec:
           grpc:
             port: 9003
             service: inference-extension
-          initialDelaySeconds: 5
-          periodSeconds: 10
+          periodSeconds: 2
+
         env:
----
-# Source: inferencepool/templates/gke.yaml
-apiVersion: monitoring.googleapis.com/v1
-kind: ClusterPodMonitoring
-metadata:
-  name: gemma-release-name
-  labels:
-    app.kubernetes.io/name: release-name-epp
-    app.kubernetes.io/version: "v0.4.0"
-spec:
-  endpoints:
-  - port: metrics
-    scheme: http
-    interval: 5s
-    path: /metrics
-    authorization:
-      type: Bearer
-      credentials:
-        secret:
-          name: inference-gateway-sa-metrics-reader-secret
-          key: token
-          namespace: default
-  selector:
-    matchLabels:
-        inferencepool: release-name-epp
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: plugins-config-volume
+          mountPath: "/config"
+      volumes:
+      - name: plugins-config-volume
+        configMap:
+          name: release-name-epp
 ---
 # Source: inferencepool/templates/gke.yaml
 apiVersion: networking.gke.io/v1
@@ -164,10 +291,10 @@ metadata:
   namespace: gemma
   labels:
     app.kubernetes.io/name: release-name-epp
-    app.kubernetes.io/version: "v0.4.0"
+    app.kubernetes.io/version: "v1.1.0"
 spec:
   targetRef:
-    group: "inference.networking.x-k8s.io"
+    group: "inference.networking.k8s.io"
     kind: InferencePool
     name: release-name
   default:
@@ -183,13 +310,17 @@ metadata:
   namespace: gemma
   labels:
     app.kubernetes.io/name: release-name-epp
-    app.kubernetes.io/version: "v0.4.0"
+    app.kubernetes.io/version: "v1.1.0"
 spec:
   targetRef:
-    group: "inference.networking.x-k8s.io"
+    group: "inference.networking.k8s.io"
     kind: InferencePool
     name: release-name
   default:
+    # Set a more aggressive health check than the default 5s for faster switch
+    # over during EPP rollout.
+    timeoutSec: 2
+    checkIntervalSec: 2
     config:
       type: HTTP
       httpHealthCheck:
@@ -197,17 +328,46 @@ spec:
           port:  8000
 ---
 # Source: inferencepool/templates/inferencepool.yaml
-apiVersion: inference.networking.x-k8s.io/v1alpha2
+apiVersion: "inference.networking.k8s.io/v1"
 kind: InferencePool
 metadata:
   name: release-name
   namespace: gemma
   labels:
     app.kubernetes.io/name: release-name-epp
-    app.kubernetes.io/version: "v0.4.0"
+    app.kubernetes.io/version: "v1.1.0"
 spec:
-  targetPortNumber: 8000
+  targetPorts:
+      - number: 8000
   selector:
-    app: ""
-  extensionRef:
+    matchLabels:
+      app: "release-name"
+  endpointPickerRef:
     name: release-name-epp
+    port:
+      number: 9002
+---
+# Source: inferencepool/templates/gke.yaml
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: release-name
+  namespace: gemma
+  labels:
+    app.kubernetes.io/name: release-name-epp
+    app.kubernetes.io/version: "v1.1.0"
+spec:
+  endpoints:
+  - port: metrics
+    scheme: http
+    interval: 10s
+    path: /metrics
+    authorization:
+      type: Bearer
+      credentials:
+        secret:
+          name: release-name-metrics-reader-secret
+          key: token
+  selector:
+    matchLabels:
+        inferencepool: release-name-epp

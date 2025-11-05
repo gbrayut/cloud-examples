@@ -33,11 +33,11 @@ spec:
     spec:
       containers:
       - name: bbr
-        image: registry.k8s.io/gateway-api-inference-extension/bbr:v0.4.0
+        image: registry.k8s.io/gateway-api-inference-extension/bbr:v1.1.0
         imagePullPolicy: Always
         args:
-        - "-streaming"
-        - "-v"
+        - "--streaming"
+        - "--v"
         - "3"
         ports:
         - containerPort: 9004
