@@ -147,33 +147,47 @@ The [vllm-infgw-metrics.yaml](./vllm-infgw-metrics.yaml) manifest configures man
 ```shell
 # Create InferencePool and InferenceObjective CRDs
 kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.1.0/manifests.yaml
-# Create RBAC to allow Managed Prometheus to scrape EPP metrics endpoint. For Autopilot, change namespace at bottom to gke-gmp-system
-# See https://gateway-api-inference-extension.sigs.k8s.io/guides/metrics/#scrape-metrics
-kubectl apply -f $BASE/vllm-infgw-metrics.yaml
+
+# Create values.yaml file that enables monitoring for HPA and dashboards on GKE
+# See https://github.com/kubernetes-sigs/gateway-api-inference-extension/tree/main/config/charts/inferencepool#install-with-monitoring
+cat << EOF > /tmp/epp-values.yaml
+provider:
+  name: "gke"
+  gke:
+    autopilot: false
+inferenceExtension:
+  tracing:
+    enabled: false
+  monitoring:
+    interval: "10s"
+    prometheus:
+      enabled: true
+      auth:
+        enabled: true
+      extraLabels: {}
+EOF
+# prometheus true and auth enabled are required for provider gke
 
 # Create InferencePool resources https://github.com/kubernetes-sigs/gateway-api-inference-extension/tree/main/config/charts/inferencepool#configuration
 # Note: replace helm install with helm template if you want to see the rendered manifest first or use helm upgrade to deploy a newer version
 INFERENCE_POOL=vllm-gemma-3-1b
 helm install ${INFERENCE_POOL} -n gemma \
+  --version "v1.1.0" -f /tmp/epp-values.yaml \
   --set inferencePool.modelServers.matchLabels.app=${INFERENCE_POOL} \
-  --set provider.name=gke \
-  --version v1.1.0 \
   oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool
 
 # Since the 4b model is a separate deployment, it needs it's own InferencePool as well
 INFERENCE_POOL=vllm-gemma-3-4b
 helm install ${INFERENCE_POOL} -n gemma \
+  --version "v1.1.0" -f /tmp/epp-values.yaml \
   --set inferencePool.modelServers.matchLabels.app=${INFERENCE_POOL} \
-  --set provider.name=gke \
-  --version v1.1.0 \
   oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool
 
 # Same for llama 3b
 INFERENCE_POOL=vllm-llama-3-3b
 helm install ${INFERENCE_POOL} -n gemma \
+  --version "v1.1.0" -f /tmp/epp-values.yaml \
   --set inferencePool.modelServers.matchLabels.app=${INFERENCE_POOL} \
-  --set provider.name=gke \
-  --version v1.1.0 \
   oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool
 
 # You should now see one -epp pod for each inference pool (inferenceExtension.replicas value defaults to 1)
