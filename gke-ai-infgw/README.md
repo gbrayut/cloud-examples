@@ -140,9 +140,7 @@ If you see this error it usually means something is wrong with the HTTPRoute:
 
 # GKE Inference Gateway with BBR and EPP
 
-To create an even more flexible API endpoint, the GKE Inference Gateway builds on the previous examples by adding a layer of indirection (InferencePool for each vLLM deployment, and mapping one or more InferenceObjectives to each pool) along with custom metric based horizontal autoscaling.
-
-The [vllm-infgw-metrics.yaml](./vllm-infgw-metrics.yaml) manifest configures managed metric collection, and the helm chart (See [manifests/inferencepool-epp.yaml](./manifests/inferencepool-epp.yaml)) creates the InferencePool, -epp deployment and other resources. Those can then be combined with an InferenceObjective and used in a custom HTTPRoute (see [infgw-httproute-infp-info.yaml](./infgw-httproute-infp-info.yaml)).
+To create an even more flexible API endpoint, the GKE Inference Gateway builds on the previous examples by adding a layer of indirection (InferencePool for each vLLM deployment, and optionally mapping one or more InferenceObjectives to each pool). Custom metric based horizontal autoscaling is also included, with the v1.0 helm chart configuring managed metric collection in GKE as long as the right values are provided. The [manifests/inferencepool-epp.yaml](./manifests/inferencepool-epp.yaml) rendered chart shows the InferencePool, -epp deployment and other infgw resources. Those can then be combined with an InferenceObjective and used in a custom HTTPRoute (see [infgw-httproute-infp-info.yaml](./infgw-httproute-infp-info.yaml)).
 
 ```shell
 # Create InferencePool and InferenceObjective CRDs
@@ -383,7 +381,7 @@ If the HPA or Dashboard are not working you can try enabling [Target Status](htt
 
 > Last Error:                    Get "http://10.120.2.35:9090/metrics": unable to read authorization credentials: secret default/inference-gateway-sa-metrics-reader-secret not found or forbidden
 
-then double check vllm-infgw-metrics.yaml created the scrape secret, and you may also need to delete/rollout restart the collector pod on any nodes where the epp is running using: ```kubectl rollout restart -n gmp-system ds/collector```
+then double check that the inferencepool helm chart created the scrape secret, and you may also need to delete/rollout restart the gmp-system collector pod on any nodes where the epp is running using: ```kubectl rollout restart -n gmp-system ds/collector```
 
 ## View HTTP Logs
 
