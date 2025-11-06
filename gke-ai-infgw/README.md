@@ -20,12 +20,13 @@ CLUSTER_NAME=my-gke-cluster
 HF_TOKEN=hf_12345REDACTED   # Hugging Face user must accept the Gemma license linked above.
 BASE=https://raw.githubusercontent.com/gbrayut/cloud-examples/refs/heads/main/gke-ai-infgw    # Or use local path to cloned repo
 
-# Add gpu node pool. See https://docs.cloud.google.com/kubernetes-engine/docs/tutorials/serve-gemma-gpu-vllm#create-cluster
+# Add gpu node pool with no initial nodes. See https://docs.cloud.google.com/kubernetes-engine/docs/tutorials/serve-gemma-gpu-vllm#create-cluster
 # each g2-standard-8 has one L4 GPU with 24GB GDDR6, 8 vCPU, 32GB RAM, and costs ~$2 an hour
 gcloud container node-pools create gpupool --cluster=my-gke-cluster --project="$PROJECT_ID" \
     --machine-type=g2-standard-8 --accelerator type=nvidia-l4,count=1,gpu-driver-version=latest \
     --location=us-central1 --node-locations="us-central1-a,us-central1-b,us-central1-c" \
-    --num-nodes=0 --enable-autoscaling --min-nodes=0 --max-nodes=5
+    --enable-autoscaling --total-min-nodes=0 --total-max-nodes=5 --num-nodes=0  # num-nodes is per zone
+
 # Find zones with accelerators (another example --filter="name:(nvidia-tesla-a100 nvidia-a100-80gb)")
 gcloud compute accelerator-types list --filter="(name:nvidia-l4 AND zone:(us-central* us-west1*)) AND NOT name:*-vws"
 
@@ -318,13 +319,15 @@ The GKE Inference Gateway also includes some example monitoring dashboards:
 
 - Cloud Console -> Monitoring -> [Dashboards](https://console.cloud.google.com/monitoring/dashboards) -> View Dashboard Templates
 - Search for dashboards: vllm
-- Select: vLLM Prometheus Overview ([direct link](https://console.cloud.google.com/monitoring/dashboards/integration/vllm.vllm-prometheus))
+- Note: there may be mulitple version (v0, v1, v2) and you usually want the latest version
+- Select: vLLM Prometheus Overview ([direct link](https://console.cloud.google.com/monitoring/dashboards/integration/vllm.vllm-prometheus-2))
 
 Which uses metrics from the **vllm-gemma-3-1b:8000/metrics** endpoint and requires either Managed Prometheus [Automatic Application Monitoring](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/configure-automatic-application-monitoring) or manually configured metric scraping (PodMonitor/ClusterPodMonitor/etc). So if the dashboard is empty make sure automatic application monitoring is enabled for the cluster.
 
 There also is an example dashboard showing details for the Inference Gateway/Pool/Models:
 - Search for dashboards: inference
-- Select: GKE Inference Gateway Prometheus Overview ([direct link](https://console.cloud.google.com/monitoring/dashboards/integration/gateway-api-inference-extension.inference-extension-prometheus))
+- Note: there may be mulitple version (v0, v1, v2) and you usually want the latest version
+- Select: GKE Inference Gateway Prometheus Overview ([direct link](https://console.cloud.google.com/monitoring/dashboards/integration/gateway-api-inference-extension.inference-extension-prometheus-2))
 
 TODO: Link to blog post or screenshots of dashboards?
 
