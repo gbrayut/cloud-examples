@@ -32,6 +32,7 @@ data:
     # Remote autopilot cluster in another project (using DNS Endpoint)
     - name: gke_gregbray-alt_us-west1_ap-1
       cluster:
+        # Update this server with your desired target dns-endpoint
         server: https://gke-6debd0d0d0384692be8f4efcc705848fe060-58672265271.us-west1.gke.goog
     # For remote ip endpoint probably easier to use gcloud get-credentials to configure server+cert+user
 
@@ -158,7 +159,7 @@ subjects:
   namespace: test-cloudsdk
 # WIF for GKE via ADC in pod
 - kind: User
-  name: serviceAccount:gregbray-vpc.svc.id.goog[test-cloudsdk/gcloud-ksa]
+  name: serviceAccount:gregbray-vpc.svc.id.goog[test-cloudsdk/gcloud-ksa]   # Update this project id to match your local GKE cluster project
   #uses serviceAccount:<project id>.svc.id.goog[<namespace>/<ksa name>]
 
 
