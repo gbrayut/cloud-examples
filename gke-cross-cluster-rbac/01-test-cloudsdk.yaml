@@ -1,0 +1,170 @@
+# Example using pod's KSA token or ADC+WIF to access local or remote kube-api 
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-cloudsdk
+---
+# Create a named service account, but would work the same for default
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gcloud-ksa
+  namespace: test-cloudsdk
+---
+# Config files for kubectl and gcloud
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: config
+  namespace: test-cloudsdk
+data:
+  # https://kubernetes.io/docs/reference/config-api/kubeconfig.v1/
+  kube: |
+    apiVersion: v1
+    clusters:
+    # Local kube-api endpoint
+    - name: local
+      cluster:
+        # Use the internal DNS name for the Kubernetes API Service
+        server: https://kubernetes.default.svc.cluster.local
+        # Use the projected CA certificate bundle for validation
+        certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    # Remote autopilot cluster in another project (using DNS Endpoint)
+    - name: gke_gregbray-alt_us-west1_ap-1
+      cluster:
+        server: https://gke-6debd0d0d0384692be8f4efcc705848fe060-58672265271.us-west1.gke.goog
+    # For remote ip endpoint probably easier to use gcloud get-credentials to configure server+cert+user
+
+    users:    # https://kubernetes.io/docs/reference/config-api/kubeconfig.v1/#AuthInfo
+    # Use the local auto mounted token for pod's ksa
+    - name: pod-ksa
+      user:
+        tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+        # Could also replace with projected ksa token (/root/cfg/token) if custom audience or expiration is required
+    # Use Application Default Credentials https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl#install_plugin
+    - name: pod-adc
+      user:
+        # Same plugin used by get-credentials. Essentially ADC (GKE Metadata Server) then WIF for GKE
+        exec:
+          apiVersion: client.authentication.k8s.io/v1beta1
+          command: gke-gcloud-auth-plugin
+          provideClusterInfo: true
+
+    contexts:
+    - name: local-ksa
+      context:
+        cluster: local
+        user: pod-ksa
+        namespace: test-cloudsdk
+    - name: local-adc
+      context:
+        cluster: local
+        user: pod-adc
+        namespace: test-cloudsdk
+    - name: ap1-us-west1
+      context:
+        cluster: gke_gregbray-alt_us-west1_ap-1
+        user: pod-adc
+        namespace: default
+
+    current-context: local-ksa
+
+  # ADC file for use in OIDC federation https://cloud.google.com/sdk/gcloud/reference/iam/workload-identity-pools/create-cred-config
+  #adc: |
+  #  {
+  #    "type": "external_account",
+  #    "audience": "//iam.googleapis.com/projects/388410766669/locations/global/workloadIdentityPools/demo/providers/demo-oidc-provider",
+  #    "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+  #    "token_url": "https://sts.googleapis.com/v1/token",
+  #    "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/test-sa@gregbray-vpc.iam.gserviceaccount.com:generateAccessToken",
+  #    "credential_source": {
+  #      "file": "/root/cfg/token"
+  #    }
+  #  }
+---
+# Deployment for testing gcloud and kubectl commands
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: google-cloud-cli
+  namespace: test-cloudsdk
+  labels:
+    app: google-cloud-cli
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: google-cloud-cli
+  template:
+    metadata:
+      labels:
+        app: google-cloud-cli
+    spec:
+      terminationGracePeriodSeconds: 0
+      serviceAccountName: gcloud-ksa
+      automountServiceAccountToken: true   # creates /var/run/secrets/kubernetes.io/serviceaccount/token, use false for only projected tokens
+      containers:
+      - #image: gcr.io/google.com/cloudsdktool/google-cloud-cli:latest  # Large image used by cloud shell that has most developer tools installed
+        image: google/cloud-sdk:latest     # :slim or :latest are much smaller but missing python/etc
+        name: gcloud
+        command: ["sleep","infinity"]
+        env:
+          # Change the default kubectl file location to where the configmap is mounted
+          - name: KUBECONFIG
+            value: /root/cfg/kubeconfig
+
+          # configure ADC environment variable for advanced WIF https://cloud.google.com/iam/docs/workload-identity-federation-with-other-providers
+          #- name: GOOGLE_APPLICATION_CREDENTIALS
+          #  value: /root/cfg/google-application-credentials.json
+        volumeMounts:
+        - name: configs
+          mountPath: /root/cfg  # Will have config, adc, and projected token files
+          readOnly: true
+      volumes:
+      - name: configs
+        projected:
+          defaultMode: 420
+          sources:
+          # Projected service account (more control vs automatic mounted one)
+          # see https://cloud.google.com/blog/products/containers-kubernetes/kubernetes-bound-service-account-tokens
+          - serviceAccountToken:
+              path: token
+              #audience: https://idp.example.com # Defaults to Google Cloud Platform, but may need to change audience if targeting another cloud provider
+              expirationSeconds: 1800   # default 1h, min 10m, rotated automatically at 80% lifetime
+          - configMap:
+              name: config
+              optional: false
+              items:
+                #- key: "adc"
+                #  path: "google-application-credentials.json"
+                - key: "kube"
+                  path: "kubeconfig"
+---
+# Assign the pod's KSA and ADC accounts the view permission for this namespace
+# same as: kubectl create rolebinding ksa-k8s-read-access -n test-cloudsdk --clusterrole=view --serviceaccount=test-cloudsdk:gcloud-ksa --user="serviceAccount:gregbray-vpc.svc.id.goog[test-cloudsdk/gcloud-ksa]"
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ksa-k8s-read-access
+  namespace: test-cloudsdk
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+# local ksa
+- kind: ServiceAccount
+  name: gcloud-ksa
+  namespace: test-cloudsdk
+# WIF for GKE via ADC in pod
+- kind: User
+  name: serviceAccount:gregbray-vpc.svc.id.goog[test-cloudsdk/gcloud-ksa]
+  #uses serviceAccount:<project id>.svc.id.goog[<namespace>/<ksa name>]
+
+
+# Testing:
+# kubectl exec -it -n test-cloudsdk google-cloud-cli -- /bin/bash
+# then: kubectl get pods
+# or:   kubectl get pods --context local-adc
+# or:   kubectl get pods --context ap1-us-west1
+# and:  kubectl auth whoami
