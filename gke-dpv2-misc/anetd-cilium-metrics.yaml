@@ -1,0 +1,16 @@
+# Based on https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/blob/main/networking/dpv2-observability/cluster-pod-monitoring.yaml
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: anetd-cilium-metrics
+  namespace: kube-system
+spec:
+  endpoints:
+    - interval: 60s
+      port: 9990
+      path: /metrics
+  selector:
+    matchLabels:
+      k8s-app: cilium
+  targetLabels:
+    metadata: []
