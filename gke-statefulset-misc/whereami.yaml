@@ -1,0 +1,101 @@
+# Testing StatefulSet Stable Network ID using Cloud DNS additive VPC scope https://docs.cloud.google.com/kubernetes-engine/docs/concepts/about-cloud-dns#dns-scopes
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-sts
+---
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "whereami"
+  namespace: "test-sts"
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    appProtocol: http
+    name: http
+  selector:
+    app: "whereami"
+  type: "ClusterIP"
+  clusterIP: "None" # creates a headless service. Required for Stable Network ID in Cloud DNS
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: whereami-stateful   # Name used for pod prefix (whereami-stateful-0, whereami-stateful-1, whereami-stateful-2)
+  namespace: "test-sts"
+spec:
+  serviceName: "whereami"   # This must be the headless service to have the <podname>.<service>.<namespace>.svc.cluster.local (or cluster suffix) records created
+  replicas: 3
+  selector:
+    matchLabels:
+      app: whereami
+  template:
+    metadata:
+      labels:
+        app: whereami
+    spec:
+      terminationGracePeriodSeconds: 0
+      containers:
+      # https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/quickstarts/whereami
+      - name: whereami
+        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.24
+        ports:
+        - containerPort: 8080
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: ECHO_HEADERS
+          value: "True"
+        #volumeMounts:
+        #- name: www
+        #  mountPath: /static
+  #volumeClaimTemplates:
+  #- metadata:
+  #    name: www
+  #  spec:
+  #    accessModes: [ "ReadWriteOnce" ]
+  #    resources:
+  #      requests:
+  #        storage: 1Gi
+---
+# Add another service if you still want an internal or external load balancer
+apiVersion: v1
+kind: Service
+metadata:
+  name: "whereami-nlb"
+  namespace: "test-sts"
+  labels:
+    app: "whereami"
+  #annotations:  # https://cloud.google.com/kubernetes-engine/docs/concepts/service-load-balancer-parameters#service_parameters
+  #  networking.gke.io/load-balancer-type: "Internal"
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    appProtocol: http
+    name: http
+  type: "LoadBalancer"
+  selector:
+    app: "whereami"
+
+# Open https://console.cloud.google.com/net-services/dns/zones to see DNS records
+# or from a VM in the VPC where cluster has Cloud DNS Additive scope of gke-iowa.example.net the following should work:
+# dig whereami-stateful-{0,1,2}.whereami.test-sts.svc.gke-iowa.example.net. | grep "30 IN A"
+#
+# whereami-stateful-0.whereami.test-sts.svc.gke-iowa.example.net.	30 IN A	10.27.128.24
+# whereami-stateful-1.whereami.test-sts.svc.gke-iowa.example.net.	30 IN A	10.27.128.25
+# whereami-stateful-2.whereami.test-sts.svc.gke-iowa.example.net.	30 IN A	10.27.128.26
