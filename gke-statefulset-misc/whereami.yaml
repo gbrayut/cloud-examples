@@ -1,4 +1,6 @@
 # Testing StatefulSet Stable Network ID using Cloud DNS additive VPC scope https://docs.cloud.google.com/kubernetes-engine/docs/concepts/about-cloud-dns#dns-scopes
+# https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#stable-network-id
+# https://kubernetes.io/docs/tutorials/stateful-application/basic-stateful-set/#discovery-for-specific-pods-in-a-statefulset
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -92,10 +94,32 @@ spec:
   selector:
     app: "whereami"
 
-# Open https://console.cloud.google.com/net-services/dns/zones to see DNS records
+# Open https://console.cloud.google.com/net-services/dns/zones to see DNS records mapping to each of the current pod IPs
 # or from a VM in the VPC where cluster has Cloud DNS Additive scope of gke-iowa.example.net the following should work:
 # dig whereami-stateful-{0,1,2}.whereami.test-sts.svc.gke-iowa.example.net. | grep "30 IN A"
 #
 # whereami-stateful-0.whereami.test-sts.svc.gke-iowa.example.net.	30 IN A	10.27.128.24
 # whereami-stateful-1.whereami.test-sts.svc.gke-iowa.example.net.	30 IN A	10.27.128.25
 # whereami-stateful-2.whereami.test-sts.svc.gke-iowa.example.net.	30 IN A	10.27.128.26
+#
+# Can also run a curl test as long as there are VPC firewall rules that allow the ingress traffic
+# curl -s whereami-stateful-0.whereami.test-sts.svc.gke-iowa.example.net:8080 | jq .
+#{
+#  "cluster_name": "gke-iowa",
+#  "gce_instance_id": "219731135539458746",
+#  "gce_service_account": "gregbray-vpc.svc.id.goog",
+#  "headers": {
+#    "Accept": "*/*",
+#    "Host": "whereami-stateful-0.whereami.test-sts.svc.gke-iowa.example.net:8080",
+#    "User-Agent": "curl/8.5.0"
+#  },
+#  "host_header": "whereami-stateful-0.whereami.test-sts.svc.gke-iowa.example.net:8080",
+#  "node_name": "gke-gke-iowa-default-pool-dd580c3c-m9wp",
+#  "pod_ip": "10.27.128.24",
+#  "pod_name": "whereami-stateful-0",
+#  "pod_name_emoji": "👩🏿‍❤‍💋‍👨🏿",
+#  "pod_namespace": "test-sts",
+#  "project_id": "gregbray-vpc",
+#  "timestamp": "2025-12-17T15:24:39",
+#  "zone": "us-central1-a"
+#}
