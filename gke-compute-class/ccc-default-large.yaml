@@ -1,0 +1,43 @@
+# Cluster level default compute class for GKE Autopilot or Standard. See https://docs.cloud.google.com/kubernetes-engine/docs/concepts/about-compute-classes#about-default-computeclasses 
+# CRD Reference Docs https://cloud.google.com/kubernetes-engine/docs/reference/crds/computeclass
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: default   # Also must create or update cluster with --enable-default-compute-class
+  #namespace: ... # ComputeClass is always a cluster wide resource
+  # Create Workload level ComputeClass overrides using nodeSelector or
+  # Namespace level using labels https://docs.cloud.google.com/kubernetes-engine/docs/how-to/run-pods-default-compute-classes#namespace-default-computeclass
+spec:
+  description: "Set workloads by default to use larger nodes to maximize IPAM and Daemonset utilization"
+  # Selecting specific hardware in Autopilot mode will use the node-based billing model per https://cloud.google.com/kubernetes-engine/pricing
+  # Specify desired compute priorities. See family max sizes at https://docs.cloud.google.com/compute/docs/machine-resource#machine_type_comparison  
+  priorities:
+  - machineFamily: n2   # n2 can go up to 128 vCPU, but best to pick a fractional size that is easier to obtain and won't strand/waste resources
+    minCores: 64
+  - machineFamily: n2d  # n2d can go up to 224 vCPU, but again fractional sizes will have less stock-out and better fit partial filled nodes
+    minCores: 56
+  
+  # On Autopilot mode the above usually get cloud.google.com/gke-max-pods-per-node=110 but technically that is a dynamic value optimized by Google (no exact formula for calculating)
+  # For Standard they would get the cluster's default --max-pods-per-node value or whatever was specified when creating the node pool
+
+  # smaller node examples (usually getting less than 110 gke-max-pods-per-node in autopilot)
+  - machineFamily: n4d  # n4d can go up to 96 vCPU but is limited to certain regions
+    minCores: 48        
+  - machineFamily: n4   # n4 can go up to 80 vCPU but is limited to certain regions
+    minCores: 40        
+  - machineFamily: e2   # e2 VMs max out at 32 vCPU (gke-max-pods-per-node is usually 64 on autopilot)
+    minCores: 32       
+  - machineFamily: e2   # May want to define a Last Resort smaller VM (using any family) to help prevent stockout issues
+    minCores: 8
+
+  # More examples:
+  #- machineFamily: n2    # By default 128 vCPU seems to still get 110 max pod setting on autopilot
+  #  minCores: 128        # so have to specify if you want denser nodes each with a larger /23 pod cidr instead of /24
+  #  maxPodsPerNode: 256  # note: manually setting maxPodsPerNode may end up stranding more IPs if nodes are only partially filled
+
+  #- machineType: e2-highcpu-32   # Can specify exact machine type if desired. Defaults to 64 max pods with /25 per node
+  #  maxPodsPerNode: 128          # This should only be specified if you expect every node to have a large number of very small pods
+
+  nodePoolAutoCreation:
+    enabled: true
+  whenUnsatisfiable: DoNotScaleUp # will leave pods in pending state if all priorities are unavailable. Use ScaleUpAnyway to fall back to default Cluster Autoscaler rules
