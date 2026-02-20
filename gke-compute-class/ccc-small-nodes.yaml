@@ -1,0 +1,81 @@
+# Example of a Compute Class that explicitly sets maxPodsPerNode on Autopilot or Standard for managing pod-cidr size assigned to each node
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: isolated-app
+  labels:
+    # Optionally specify default class for all new deployments in a namespace
+    # see https://docs.cloud.google.com/kubernetes-engine/docs/how-to/run-pods-default-compute-classes
+    cloud.google.com/default-compute-class: small-nodes
+---
+# CRD Reference Docs https://cloud.google.com/kubernetes-engine/docs/reference/crds/computeclass
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: small-nodes
+  #namespace: ... # ComputeClass is always a cluster wide resource
+spec:
+  description: "For isolated workloads (one replica per node) that manage Pod IP utilization by setting maxPodsPerNode"
+  # Selecting specific hardware in Autopilot mode will use the node-based billing model per https://cloud.google.com/kubernetes-engine/pricing
+  priorities:
+  - machineFamily: n4   # specify n4 VM (not available in all regions) as first priority
+    maxPodsPerNode: 16  # In Autopilot mode using the dynamic default is usually recommended. But you can specify smaller/larger if desired.
+  - machineFamily: e2   # e2 VMs max out at 32 vCPU and gke-max-pods-per-node is usually 64 for 32 cores on autopilot (pod CIDR is /26)
+    maxPodsPerNode: 16  # 17-32 max-pod use a /27 per-node pod CIDR, 9-16 uses a /28 pod CIDR, smallest value 8 uses /28 pod CIDR
+    # more details at https://docs.cloud.google.com/kubernetes-engine/docs/how-to/flexible-pod-cidr#cidr_ranges_for_clusters
+  
+  # on GKE Standard instead of machineFamily you can also specify machineType: e2-highcpu-32, or machineType: n2-custom-16-20480
+
+  nodePoolAutoCreation:
+    enabled: true
+  whenUnsatisfiable: DoNotScaleUp # will leave pods in pending state if all priorities are unavailable. Use ScaleUpAnyway to fall back to default Cluster Autoscaler rules
+---
+# sample workload using compute class
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whereami
+  namespace: isolated-app
+  labels:
+    app: whereami
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: whereami
+  template:
+    metadata:
+      labels:
+        app: whereami
+    spec:
+      nodeSelector:
+        cloud.google.com/compute-class: small-nodes   # or omit this to use the namespace/cluster level default
+      terminationGracePeriodSeconds: 5
+      containers:
+      # https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/quickstarts/whereami
+      - name: whereami
+        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.24
+        ports:
+        - containerPort: 8080
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: ECHO_HEADERS
+          value: "True"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "6"
+          limits:
+            memory: "512Mi"
+            cpu: "6"

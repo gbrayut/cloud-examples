@@ -8,7 +8,7 @@ metadata:
   # Create Workload level ComputeClass overrides using nodeSelector or
   # Namespace level using labels https://docs.cloud.google.com/kubernetes-engine/docs/how-to/run-pods-default-compute-classes#namespace-default-computeclass
 spec:
-  description: "Set workloads by default to use larger nodes to maximize IPAM and Daemonset utilization"
+  description: "Set workloads by default to use larger nodes to maximize bin-packing and shared Daemonset"
   # Selecting specific hardware in Autopilot mode will use the node-based billing model per https://cloud.google.com/kubernetes-engine/pricing
   # Specify desired compute priorities. See family max sizes at https://docs.cloud.google.com/compute/docs/machine-resource#machine_type_comparison  
   priorities:
@@ -35,8 +35,8 @@ spec:
   #  minCores: 128        # so have to specify if you want denser nodes each with a larger /23 pod cidr instead of /24
   #  maxPodsPerNode: 256  # note: manually setting maxPodsPerNode may end up stranding more IPs if nodes are only partially filled
 
-  #- machineType: e2-highcpu-32   # Can specify exact machine type if desired. Defaults to 64 max pods with /25 per node
-  #  maxPodsPerNode: 128          # This should only be specified if you expect every node to have a large number of very small pods
+  #- machineType: e2-highcpu-32   # GKE Standard can specify exact machine type if desired. Defaults to 64 max pods with /25 per node
+  #  maxPodsPerNode: 128          # this should only be specified if you expect every node to have a large number of very small pods
 
   nodePoolAutoCreation:
     enabled: true
