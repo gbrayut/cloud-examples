@@ -1,0 +1,60 @@
+# Testing ImageVolume beta in 1.35 https://kubernetes.io/docs/concepts/storage/volumes/#image
+# Based on KEP-4639 https://github.com/kubernetes/enhancements/issues/4639
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-imagevolume
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whereami
+  namespace: test-imagevolume
+  labels:
+    app: whereami
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: whereami
+  template:
+    metadata:
+      labels:
+        app: whereami
+    spec:
+      containers:
+      # https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/quickstarts/whereami
+      - name: whereami
+        image: us-docker.pkg.dev/google-samples/containers/gke/whereami:v1.2.24
+        ports:
+        - containerPort: 8080
+        env:
+        - name: NODE_NAME #The node name the pod is running on
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_NAMESPACE #The kubernetes Namespace where the Pod is running
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP #The IP address of the pod
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: ECHO_HEADERS
+          value: "True"
+        volumeMounts:
+        - mountPath: /mnt/test
+          # subPath requires containerd 2.2 https://github.com/containerd/containerd/releases/tag/v2.2.0
+          #subPath: usr/bin   # Not supported on GKE 1.35 which uses containerd 2.1.5 for COS and Ubuntu nodes
+          name: amicontained
+      volumes:
+        - name: amicontained
+          image:
+            # https://github.com/genuinetools/amicontained
+            reference: jess/amicontained:latest
+            pullPolicy: IfNotPresent
+
+# kubectl exec -it -n test-imagevolume deploy/whereami -- /bin/bash
+# ls /mnt/test/
+# /mnt/test/usr/bin/amicontained
