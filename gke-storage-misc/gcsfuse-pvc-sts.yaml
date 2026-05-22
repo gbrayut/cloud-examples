@@ -17,6 +17,7 @@ spec:
     - uid=100           # Force files to look like they are owned by correct UID
     - gid=101           # Force files to look like they are owned by correct UID
     # Full list at https://docs.cloud.google.com/storage/docs/cloud-storage-fuse/cli-options
+  persistentVolumeReclaimPolicy: Delete   # Automates the removal of cluster level PV resource if PVC is deleted. No impact on files or bucket, just prevents pod or pvc stuck as pending due to previous claim.
   csi:
     driver: gcsfuse.csi.storage.gke.io
     # Replace this with your Google Cloud Storage bucket name (without the gs:// prefix)

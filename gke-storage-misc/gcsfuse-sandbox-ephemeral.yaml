@@ -53,7 +53,6 @@ spec:
 
 # This shows we can read/write from the volumes
 # kubectl exec -it -n test-gcs deploy/sandbox-ephemeral -c busybox -- /bin/sh -c 'touch /data-this-pod/hello;ls -hal /data/** /data-this-pod/'
-#kubectl exec -it -n test-gcs deploy/sandbox-ephemeral -c busybox -- /bin/sh -c 'touch /data-this-pod/hello;ls -hal /data/** /data-this-pod/'
 #/data-this-pod/:
 #-rw-r--r--    1 root     root           0 May 22 02:48 hello
 #
