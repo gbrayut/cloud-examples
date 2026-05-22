@@ -1,0 +1,151 @@
+# gcsfuse CSI driver and GKE Agent Sandbox https://docs.cloud.google.com/kubernetes-engine/docs/how-to/how-install-agent-sandbox#deploy-a-sandboxed-environment
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: agentsandbox-pool-pv
+  # namespace: test-gcs   # PV is a cluster level resource, not namespaced
+spec:
+  accessModes:
+  - ReadWriteMany
+  capacity:
+    storage: 10Gi # Must match or exceed the storage requested in the volumeClaimTemplate, but GCS is effectively unlimited
+  storageClassName: ""  # or something random like gcsfuse-testing (doesn't have to actually exist for dynamically provisioned volumes)
+  mountOptions:
+    - implicit-dirs     # required, see more at https://docs.cloud.google.com/kubernetes-engine/docs/how-to/cloud-storage-fuse-csi-driver-perf#persistent-volume
+    # Without this trying to write files to GCS from inside the container will fail "Permission denied" due to being mounted as root:root
+    - uid=1000           # Force files to look like they are owned by correct UID
+    - gid=1000           # Force files to look like they are owned by correct GID
+    # Full list at https://docs.cloud.google.com/storage/docs/cloud-storage-fuse/cli-options
+  csi:
+    driver: gcsfuse.csi.storage.gke.io
+    # Replace this with your Google Cloud Storage bucket name (without the gs:// prefix)
+    volumeHandle: "gregbray-testing"
+    readOnly: false
+  claimRef:   # Not strictly requried, but can specify which PVC is expected to claim this volume
+    name: agentsandbox-pool-pvc
+    namespace: test-gcs
+---
+# This PVC will be used by all of the agent sandbox instances for this workload. This works better than volumeClaimTemplates which creates unique PVC for each pod (but PV only allow one PVC to bind at a time)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agentsandbox-pool-pvc
+  namespace: test-gcs
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: "" # or whatever specified above. Dont need to use this if explicitly specify volumeName and claimRef
+  volumeName: agentsandbox-pool-pv
+---
+# Use SandboxTemplate and SandboxClaim and SandboxWarmPool https://docs.cloud.google.com/kubernetes-engine/docs/how-to/how-install-agent-sandbox#recommended_create_a_sandboxtemplate_and_sandboxwarmpool
+apiVersion: extensions.agents.x-k8s.io/v1alpha1
+kind: SandboxTemplate
+metadata:
+  name: agentsandbox-template
+  namespace: test-gcs
+spec:
+  podTemplate:
+    metadata:
+      labels:
+        sandbox: other-sandbox
+      annotations:
+        # REQUIRED: This annotation triggers GKE to inject the GCS FUSE sidecar container
+        gke-gcsfuse/volumes: "true"
+    spec:
+      runtimeClassName: gvisor            # Required
+      automountServiceAccountToken: false # Required
+      securityContext:
+        runAsNonRoot: true                # Required
+        runAsUser: 1000                   # Required if image defaults to root (e.g. busybox)
+        runAsGroup: 1000
+      nodeSelector:
+        sandbox.gke.io/runtime: gvisor    # Required
+      tolerations:
+      - key: "sandbox.gke.io/runtime"
+        value: "gvisor"
+        effect: "NoSchedule"              # Required
+      serviceAccountName: test-gcs-access # Must have WIF with roles/storage.objectViewer or objectUser on GCS Bucket or project
+      containers:
+      - name: my-container
+        image: busybox
+        command: ["/bin/sh", "-c", "sleep infinity"]
+        volumeMounts:
+        - name: gcs-pvc
+          mountPath: /data
+          readOnly: true
+        # Can also use subPath or subPathExpr to only mount a subdirectory from inside the bucket https://kubernetes.io/docs/concepts/storage/volumes/#using-subpath
+        - name: gcs-pvc
+          mountPath: /data-this-pod
+          subPathExpr: $(POD_NAMESPACE)/$(POD_NAME)   # These must match the names defined in env section below
+          readOnly: false
+        # resource limits and securityContext are required for GKE Sandbox
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "500m"
+            memory: "1Gi"     # Required
+        securityContext:
+          capabilities:
+            drop: ["ALL"]     # Required
+          allowPrivilegeEscalation: false
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+      # Instead of volumeClaimTemplates use the static PVC from above on all pods
+      volumes:
+      - name: gcs-pvc
+        persistentVolumeClaim:
+          claimName: agentsandbox-pool-pvc
+          readOnly: false
+  #volumeClaimTemplates: # This only works for replica count of 1. If multiple you should use a static PVC resource and volumes section
+---
+# After applying you will see agentsandbox-warmpool-49dv8 style pods (owned by sandbox instances of the same name which are owned by the agentsandbox-warmpool)
+apiVersion: extensions.agents.x-k8s.io/v1alpha1
+kind: SandboxWarmPool
+metadata:
+  name: agentsandbox-warmpool
+  namespace: test-gcs
+  labels:
+    app: other-warmpool
+spec:
+  replicas: 2
+  sandboxTemplateRef:
+    # This must match the name of the SandboxTemplate.
+    name: agentsandbox-template
+---
+apiVersion: extensions.agents.x-k8s.io/v1alpha1
+kind: SandboxClaim
+metadata:
+  name: my-sandbox-claim
+  namespace: test-gcs
+spec:
+  sandboxTemplateRef:
+    # This must match the name of the SandboxTemplate.
+    name: agentsandbox-template
+
+# SANDBOX_POD=$(kubectl get -n test-gcs sandboxclaim/sandbox-claim -o jsonpath='{.status.sandbox.name}')
+# kubectl exec -it -n test-gcs $SANDBOX_POD -c my-container -- /bin/sh -c 'touch /data-this-pod/hello;ls -hal /data/test-gcs/** /data-this-pod'
+#/data-this-pod:
+#-rw-r--r--    1 1000     1000           0 May 22 03:37 hello
+#
+#
+#/data/test-gcs/agentsandbox-warmpool-49dv8:
+#-rw-r--r--    1 1000     1000           0 May 22 03:37 hello
+#
+#/data/test-gcs/agentsandbox-warmpool-5mlwn:
+#
+#/data/test-gcs/agentsandbox-warmpool-cwm42:
+#
+#/data/test-gcs/agentsandbox-warmpool-v47rv:

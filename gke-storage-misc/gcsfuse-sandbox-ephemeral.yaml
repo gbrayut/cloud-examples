@@ -1,0 +1,63 @@
+# gcsfuse CSI driver and GKE Sandbox https://docs.cloud.google.com/kubernetes-engine/docs/how-to/sandbox-pods
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sandbox-ephemeral
+  namespace: test-gcs
+  labels:
+    app: sandbox-ephemeral
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sandbox-ephemeral
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/volumes: "true"     # Required when using gcsfuse csi driver
+      labels:
+        app: sandbox-ephemeral
+    spec:
+      runtimeClassName: gvisor  # GKE Sandbox settings
+      terminationGracePeriodSeconds: 60 # default of 30 may be too short when flushing large file writes at application exit
+      containers:
+      - image: busybox
+        name: busybox
+        command: ["sleep"]
+        args: ["infinity"]
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        volumeMounts:
+        # This will mount the whole bucket
+        - name: gcs-ephemeral
+          mountPath: /data
+          readOnly: false   # Set this and/or below to true for read only access (default is false)
+        # This will mount a single directory from inside the bucket
+        - name: gcs-ephemeral
+          mountPath: /data-this-pod
+          subPathExpr: $(POD_NAME)  # Variables must match the names defined in env above
+      serviceAccountName: test-gcs-access   # Must have WIF with roles/storage.objectViewer or objectUser on GCS Bucket or project
+      volumes:
+      - name: gcs-ephemeral
+        csi:
+          driver: gcsfuse.csi.storage.gke.io
+          readOnly: false
+          volumeAttributes:
+            bucketName: gregbray-testing
+            mountOptions: "implicit-dirs" # from https://docs.cloud.google.com/kubernetes-engine/docs/how-to/cloud-storage-fuse-csi-driver-perf#mount-options
+            # For other options like changing uid/gid, see https://docs.cloud.google.com/storage/docs/cloud-storage-fuse/cli-options
+
+# This shows we can read/write from the volumes
+# kubectl exec -it -n test-gcs deploy/sandbox-ephemeral -c busybox -- /bin/sh -c 'touch /data-this-pod/hello;ls -hal /data/** /data-this-pod/'
+#kubectl exec -it -n test-gcs deploy/sandbox-ephemeral -c busybox -- /bin/sh -c 'touch /data-this-pod/hello;ls -hal /data/** /data-this-pod/'
+#/data-this-pod/:
+#-rw-r--r--    1 root     root           0 May 22 02:48 hello
+#
+#/data/sandbox-ephemeral-67dc7db79c-mt24f:
+#-rw-r--r--    1 root     root           0 May 22 02:48 hello
+#
+#/data/this-is-gregbray-testing:
