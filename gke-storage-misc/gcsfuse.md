@@ -33,7 +33,7 @@ gcloud storage buckets create gs://$BUCKET_NAME --location=$REGION \
 # For read only access use roles/storage.objectViewer
 KSA_PRINCIPAL="principal://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${PROJECT_ID}.svc.id.goog/subject/ns/${NAMESPACE}/sa/${KSA_NAME}"
 gcloud storage buckets add-iam-policy-binding gs://$BUCKET_NAME \
-    --role "roles/storage.objectViewer" --member "${KSA_PRINCIPAL}"
+    --role "roles/storage.objectUser" --member "${KSA_PRINCIPAL}"
 
 # Create Namespace and Kubernetes Service Account (KSA) for testing
 kubectl create ns $NAMESPACE
@@ -41,7 +41,7 @@ kubectl create serviceaccount $KSA_NAME -n $NAMESPACE
 ```
 
 ## Basic gcsfuse Volumes on GKE Workloads
-For basic workloads the easiest way to access files in GCS is using an [ephemeral volume mount](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/cloud-storage-fuse-csi-driver-ephemeral) so you don't need to manage PersistentVolume or PersistentVolumeClaim objects. The [gcsfuse-ephemeral.yaml](gcsfuse-ephemeral.yaml) shows what that would look like for a daemonset:
+For basic workloads the easiest way to access files in GCS is using an [ephemeral volume mount](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/cloud-storage-fuse-csi-driver-ephemeral) so you don't need to manage PersistentVolume or PersistentVolumeClaim objects. This is true for StatefulSet and Sandbox/Agent Sandbox as well, which can still use GCS as ephemeral volume instead of requiring PV and PVC resources. The [gcsfuse-ephemeral.yaml](gcsfuse-ephemeral.yaml) shows how to configure ephemeral volume access to GCS for a daemonset:
 
 ```shell
 kubectl apply -f https://raw.githubusercontent.com/gbrayut/cloud-examples/refs/heads/main/gke-storage-misc/gcsfuse-ephemeral.yaml
@@ -106,7 +106,7 @@ persistentvolumeclaim/stateful-whereami-pvc   Bound    stateful-whereami-pv   10
 ## GKE Sandbox and gcsfuse Volumes
 Because the gcs-fuse-csi-driver runs the privliged operations in a separate daemonset, workloads using [GKE Sandbox](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/sandbox-pods) should still be able to access files via gcsfuse volume mounts. In most cases the ephemeral mounts will be the easiest approach, but PV+PVC approach should also work. The [gcsfuse-sandbox-ephemeral.yaml](gcsfuse-sandbox-ephemeral.yaml) shows using ephemeral gscsfuse volumes on `runtimeClassName: gvisor` workloads:
 
-```
+```shell
 kubectl apply -f https://github.com/gbrayut/cloud-examples/raw/refs/heads/main/gke-storage-misc/gcsfuse-sandbox-ephemeral.yaml
 
 kubectl get pods -n test-gcs
@@ -127,6 +127,67 @@ kubectl exec -it -n test-gcs deploy/sandbox-ephemeral -c busybox -- /bin/sh -c '
 
 The [gcsfuse-agentsandbox-example.yaml](gcsfuse-agentsandbox-example.yaml) and [gcsfuse-agentsandbox-warmpool.yaml](gcsfuse-agentsandbox-warmpool.yaml) shows using ...
 
+```shell
+$ kubectl get pvc,pv,pod,sandbox -n test-gcs -o wide
+NAME                                          STATUS   VOLUME                 CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE     VOLUMEMODE
+persistentvolumeclaim/agentsandbox-pool-pvc   Bound    agentsandbox-pool-pv   10Gi       RWX                           <unset>                 2m49s   Filesystem
+
+NAME                                    CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                            STORAGECLASS   VOLUMEATTRIBUTESCLASS   REASON   AGE     VOLUMEMODE
+persistentvolume/agentsandbox-pool-pv   10Gi       RWX            Retain           Bound    test-gcs/agentsandbox-pool-pvc                  <unset>                          2m50s   Filesystem
+
+NAME                              READY   STATUS    RESTARTS   AGE     IP              NODE                                NOMINATED NODE   READINESS GATES
+pod/agentsandbox-warmpool-q4hbw   2/2     Running   0          2m48s   10.27.128.131   gke-gke-iowa-gvisor-89761852-dlkh   <none>           <none>
+pod/agentsandbox-warmpool-xbx5s   2/2     Running   0          2m49s   10.27.128.130   gke-gke-iowa-gvisor-89761852-dlkh   <none>           <none>
+pod/agentsandbox-warmpool-xxxgq   2/2     Running   0          2m47s   10.27.128.132   gke-gke-iowa-gvisor-89761852-dlkh   <none>           <none>
+
+NAME                                                  AGE
+sandbox.agents.x-k8s.io/agentsandbox-warmpool-q4hbw   2m49s
+sandbox.agents.x-k8s.io/agentsandbox-warmpool-xbx5s   2m49s
+sandbox.agents.x-k8s.io/agentsandbox-warmpool-xxxgq   2m49s
+
+$ kubectl describe sandboxclaim/my-sandbox-claim -n test-gcs
+Name:         my-sandbox-claim
+Namespace:    test-gcs
+Labels:       <none>
+Annotations:  agents.x-k8s.io/controller-first-observed-at: 2026-05-22T22:28:42.31550947Z
+API Version:  extensions.agents.x-k8s.io/v1alpha1
+Kind:         SandboxClaim
+Metadata:
+  Creation Timestamp:  2026-05-22T22:28:42Z
+  Generation:          1
+  Resource Version:    1779489050443263018
+  UID:                 9292a470-bed4-41e4-863f-45647856e8f4
+Spec:
+  Sandbox Template Ref:
+    Name:    agentsandbox-template
+  Warmpool:  default
+Status:
+  Conditions:
+    Last Transition Time:  2026-05-22T22:30:50Z
+    Message:               Pod is Ready; Service Exists
+    Observed Generation:   2
+    Reason:                DependenciesReady
+    Status:                True
+    Type:                  Ready
+  Sandbox:
+    Name:  agentsandbox-warmpool-xbx5s
+    Pod I Ps:
+      10.27.128.130
+Events:  <none>
+
+$ SANDBOX_POD=$(kubectl get -n test-gcs sandboxclaim/my-sandbox-claim -o jsonpath='{.status.sandbox.name}')
+$ kubectl exec -it -n test-gcs $SANDBOX_POD -c my-container -- /bin/sh -c 'touch /data-this-pod/hello;ls -hal /data/test-gcs/** /data-this-pod'
+/data-this-pod:
+-rw-r--r--    1 1000     1000           0 May 22 22:34 hello
+
+
+/data/test-gcs/agentsandbox-warmpool-q4hbw:
+
+/data/test-gcs/agentsandbox-warmpool-xbx5s:
+-rw-r--r--    1 1000     1000           0 May 22 22:34 hello
+
+/data/test-gcs/agentsandbox-warmpool-xxxgq:
+```
 
 ## TODO:
 https://docs.cloud.google.com/kubernetes-engine/docs/concepts/cloud-storage-fuse-csi-driver
@@ -134,3 +195,9 @@ https://docs.cloud.google.com/kubernetes-engine/docs/concepts/cloud-storage-fuse
 Move over https://github.com/gbrayut/cloud-examples/tree/main/k8s-gcsfuse
 
 https://docs.cloud.google.com/storage/docs/cloud-storage-fuse/profile-based-configurations
+
+https://github.com/GoogleCloudPlatform/gcs-fuse-csi-driver/issues/59#issuecomment-1716967172
+
+example for manual init container when auto token mount is disabled?
+
+file bug for persistentVolumeReclaimPolicy: Delete not working? First confirm expectations using another volume type.

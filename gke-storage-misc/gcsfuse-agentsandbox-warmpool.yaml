@@ -135,7 +135,7 @@ spec:
     # This must match the name of the SandboxTemplate.
     name: agentsandbox-template
 
-# SANDBOX_POD=$(kubectl get -n test-gcs sandboxclaim/sandbox-claim -o jsonpath='{.status.sandbox.name}')
+# SANDBOX_POD=$(kubectl get -n test-gcs sandboxclaim/my-sandbox-claim -o jsonpath='{.status.sandbox.name}')
 # kubectl exec -it -n test-gcs $SANDBOX_POD -c my-container -- /bin/sh -c 'touch /data-this-pod/hello;ls -hal /data/test-gcs/** /data-this-pod'
 #/data-this-pod:
 #-rw-r--r--    1 1000     1000           0 May 22 03:37 hello
