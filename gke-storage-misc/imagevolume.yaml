@@ -1,4 +1,4 @@
-# Testing ImageVolume beta in 1.35 https://kubernetes.io/docs/concepts/storage/volumes/#image
+# Testing ImageVolume (Beta in 1.35, GA in 1.36) https://kubernetes.io/docs/concepts/storage/volumes/#image
 # Based on KEP-4639 https://github.com/kubernetes/enhancements/issues/4639
 apiVersion: v1
 kind: Namespace
@@ -45,7 +45,7 @@ spec:
           value: "True"
         volumeMounts:
         - mountPath: /mnt/test
-          # subPath requires containerd 2.2 https://github.com/containerd/containerd/releases/tag/v2.2.0
+          # subPath requires GKE 1.36 with containerd 2.2 https://github.com/containerd/containerd/releases/tag/v2.2.0
           #subPath: usr/bin   # Not supported on GKE 1.35 which uses containerd 2.1.5 for COS and Ubuntu nodes
           name: amicontained
       volumes:
@@ -57,4 +57,5 @@ spec:
 
 # kubectl exec -it -n test-imagevolume deploy/whereami -- /bin/bash
 # ls /mnt/test/
-# /mnt/test/usr/bin/amicontained
+# run test binary (no subPath)    /mnt/test/usr/bin/amicontained
+# run test binary (using subPath) /mnt/test/amicontained
