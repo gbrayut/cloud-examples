@@ -1,0 +1,70 @@
+# Example using GKE's pod KSA token and Workload Identity Federation to configure Web Identity sts:AssumeRoleWithWebIdentity based permissions in AWS
+# see GKE-WIF-AWS.md and https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_create_oidc.html#manage-oidc-provider-console
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-aws-cli
+---
+# Create a named kubernetes service account, but would work the same for namespace's default
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aws-access-ksa
+  namespace: test-aws-cli
+  # If you want to use the preconfigured Google identity provider in an AWS Web Identity trust relationship it must be a Google Account (jwt issued by accounts.google.com)
+  # For GKE that would require using WIF to impersonate a Google Service Account
+  #annotations:
+  #  iam.gke.io/gcp-service-account: test-sa@gregbray-vpc.iam.gserviceaccount.com
+  # Also need to grant KSA permissions using: gcloud iam service-accounts add-iam-policy-binding test-sa@gregbray-vpc.iam.gserviceaccount.com --role="roles/iam.workloadIdentityUser" --member="serviceAccount:gregbray-vpc.svc.id.goog[test-aws-cli/aws-access-ksa]"
+---
+# this instead will use a custom AWS OIDC provider to validate KSA tokens issued by the GKE cluster (see notes in gke-cross-cluster-rbac/GKE-WIF-AWS.md)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aws-cli
+  namespace: test-aws-cli
+  labels:
+    app: aws-cli
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aws-cli
+  template:
+    metadata:
+      labels:
+        app: aws-cli
+    spec:
+      terminationGracePeriodSeconds: 0
+      serviceAccountName: aws-access-ksa
+      automountServiceAccountToken: false # default mount creates /var/run/secrets/kubernetes.io/serviceaccount/token but using the cluster issuer/full resource name as the audience
+      containers:
+      - image: amazon/aws-cli   # https://github.com/aws/aws-cli
+        name: aws
+        command: ["sleep","infinity"]
+        env:
+        # Configure authentication details https://docs.aws.amazon.com/cli/latest/topic/config-vars.html#assume-role-with-web-identity
+        - name: AWS_ROLE_ARN
+          value: arn:aws:iam::654321012345:role/GCPGKERoleForS3ReadAccess   # Must match your custom role and account details
+        - name: AWS_WEB_IDENTITY_TOKEN_FILE
+          value: /root/cfg/token
+        volumeMounts:
+        - name: configs
+          mountPath: /root/cfg  # Will have projected jwt token file with requested audience
+          readOnly: true
+      volumes:
+      - name: configs
+        projected:
+          defaultMode: 420
+          sources:
+          # Projected service account (more control vs automatic mounted one)
+          # see https://cloud.google.com/blog/products/containers-kubernetes/kubernetes-bound-service-account-tokens
+          - serviceAccountToken:
+              path: token
+              audience: my-federated-oidc.example.com   # must match audience used in AWS when creating the custom OIDC Provider 
+              expirationSeconds: 1800   # default 1h, min 10m, rotated automatically at 80% lifetime
+
+# After creating the cluster issuer's OIDC Provider and custom role in AWS you can test from GKE using:
+# kubectl exec -it -n test-aws-cli deploy/aws-cli -- /bin/bash
+#   aws s3api list-buckets
+#   aws sts assume-role-with-web-identity --role-arn "$AWS_ROLE_ARN" --role-session-name "url-session" --web-identity-token "file:///$AWS_WEB_IDENTITY_TOKEN_FILE"
