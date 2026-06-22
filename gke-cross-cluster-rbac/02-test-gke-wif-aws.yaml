@@ -45,7 +45,7 @@ spec:
         env:
         # Configure authentication details https://docs.aws.amazon.com/cli/latest/topic/config-vars.html#assume-role-with-web-identity
         - name: AWS_ROLE_ARN
-          value: arn:aws:iam::654321012345:role/GCPGKERoleForS3ReadAccess   # Must match your custom role and account details
+          value: arn:aws:iam::654321012345:role/GKEProdIowaFederatedRoleForS3Access   # Must match your custom role and account details
         - name: AWS_WEB_IDENTITY_TOKEN_FILE
           value: /root/cfg/token
         volumeMounts:
@@ -61,10 +61,11 @@ spec:
           # see https://cloud.google.com/blog/products/containers-kubernetes/kubernetes-bound-service-account-tokens
           - serviceAccountToken:
               path: token
-              audience: my-federated-oidc.example.com   # must match audience used in AWS when creating the custom OIDC Provider 
+              audience: sts.amazonaws.com # or something like my-federated-oidc.example.com. Must match audience used in AWS when creating the custom OIDC Provider
               expirationSeconds: 1800   # default 1h, min 10m, rotated automatically at 80% lifetime
 
-# After creating the cluster issuer's OIDC Provider and custom role in AWS you can test from GKE using:
+# After creating the cluster issuer's OIDC Provider and custom role in AWS and fixing env above you can test from GKE using:
 # kubectl exec -it -n test-aws-cli deploy/aws-cli -- /bin/bash
+#   export AWS_ROLE_ARN=arn:aws:iam::654321012345:role/GKEProdIowaFederatedRoleForS3Access
 #   aws s3api list-buckets
 #   aws sts assume-role-with-web-identity --role-arn "$AWS_ROLE_ARN" --role-session-name "url-session" --web-identity-token "file:///$AWS_WEB_IDENTITY_TOKEN_FILE"
