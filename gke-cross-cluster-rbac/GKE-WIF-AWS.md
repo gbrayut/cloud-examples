@@ -101,6 +101,114 @@ bash-5.2# aws sts assume-role-with-web-identity --role-arn "$AWS_ROLE_ARN" --rol
 }
 ```
 
+## AWS AssumeRoleWithWebIdentity using Google Service Account
+
+The above process can be a bit simpler if your workload instead impersonates a Google Service Account using the `iam.gke.io/gcp-service-account` annotation, although that will also make accessing and managing the short-lived tokens in each pod a bit more complex. In the GSA impersonation use-case you can skip creating an OIDC Provider in AWS and just create role statements like:
+
+```shell
+# Get Unique ID from https://console.cloud.google.com/iam-admin/serviceaccounts or using gcloud
+UNIQUEID=$(gcloud iam service-accounts describe test-sa@gregbray-vpc.iam.gserviceaccount.com --format "value(uniqueId)")
+
+# Update AWS role trusted entities to include GSA authorization
+# From https://aws.amazon.com/blogs/security/access-aws-using-a-google-cloud-platform-native-workload-identity/#define_IAM_role
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { ... other statements like cluster-level federated oidc-provider from above ... },
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "accounts.google.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "accounts.google.com:aud": "$UNIQUEID",
+          "accounts.google.com:oaud": "sts.amazonaws.com",          
+          "accounts.google.com:sub": "$UNIQUEID"
+        }
+      }
+    }
+  ]
+}
+
+# Grant KSA permissions to impersonate GSA. For principal and principalset options 
+# see https://docs.cloud.google.com/kubernetes-engine/docs/concepts/workload-identity
+BASEID="iam.googleapis.com/projects/601234567890/locations/global/workloadIdentityPools/"
+gcloud iam service-accounts add-iam-policy-binding test-sa@gregbray-vpc.iam.gserviceaccount.com \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="principal://$BASEID/gregbray-vpc.svc.id.goog/subject/ns/test-aws-cli/sa/aws-access-ksa"
+# Legacy KSA identity format also works:
+  --member="serviceAccount:gregbray-vpc.svc.id.goog[test-aws-cli/aws-access-ksa]"
+
+# And make sure the KSA is using the iam.gke.io/gcp-service-account annotation:
+kubectl patch sa -n test-aws-cli aws-access-ksa --type merge \
+  -p '{"metadata":{"annotations":{"iam.gke.io/gcp-service-account": "test-sa@gregbray-vpc.iam.gserviceaccount.com"}}}'
+```
+
+Then instead of using a projected KSA token, your workloads should use [Application Default Credentials](https://docs.cloud.google.com/docs/authentication/application-default-credentials) (programmatically via Google Cloud SDK/libraries or something like `gcloud auth print-identity-token --audiences=sts.amazonaws.com`) or manually request tokens from the GKE Metadata server:
+
+```shell
+kubectl exec -it -n test-aws-cli deploy/aws-cli -- /bin/bash
+
+# Get short-lived token directly using GKE Metadata Server
+bash-5.2# curl -sH "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=sts.amazonaws.com" -o /root/gsa_token
+# Validate token using tokeninfo API call
+bash-5.2# curl "https://oauth2.googleapis.com/tokeninfo?id_token=$(cat /root/gsa_token)"
+{
+  "aud": "sts.amazonaws.com",
+  "azp": "108222364016549509974",
+  "email": "test-sa@gregbray-vpc.iam.gserviceaccount.com",
+  "email_verified": "true",
+  "exp": "1782156873",
+  "iat": "1782153273",
+  "iss": "https://accounts.google.com",
+  "sub": "108222364016549509974",
+  "alg": "RS256",
+  "kid": "d12978ba4c29ef1154a34e4870c7a3a51d26df10",
+  "typ": "JWT"
+}
+
+bash-5.2# export AWS_WEB_IDENTITY_TOKEN_FILE=/root/gsa_token
+bash-5.2# export AWS_ROLE_ARN=arn:aws:iam::654321012345:role/GKEProdIowaFederatedRoleForS3Access
+bash-5.2# aws s3api list-buckets
+{
+    "Buckets": [
+        {
+            "Name": "gregbray-testing",
+            "CreationDate": "2026-06-17T21:26:49+00:00",
+            "BucketArn": "arn:aws:s3:::gregbray-testing"
+        }
+    ],
+    "Owner": {
+        "ID": "b0e695ee46787fa7fd5b1075b93dc7aa9fd2e5fc96d9dca9188525c4a9766864"
+    },
+    "Prefix": null
+}
+bash-5.2# aws sts assume-role-with-web-identity --role-arn "$AWS_ROLE_ARN" --role-session-name "gsa-session" --web-identity-token "file:///$AWS_WEB_IDENTITY_TOKEN_FILE"
+{
+    "Credentials": {
+        "AccessKeyId": "ASIAZR......ZPON",
+        "SecretAccessKey": "cS2dt4/......6gAP6w",
+        "SessionToken": "FwoGZXIvY......PkxS4Q0nH/VO",
+        "Expiration": "2026-06-22T19:54:46+00:00"
+    },
+    "SubjectFromWebIdentityToken": "108222364016549509974",
+    "AssumedRoleUser": {
+        "AssumedRoleId": "AROAZRVSTYEHDHF65PC5F:gsa-session",
+        "Arn": "arn:aws:sts::654321012345:assumed-role/GKEProdIowaFederatedRoleForS3Access/gsa-session"
+    },
+    "Provider": "accounts.google.com",
+    "Audience": "108222364016549509974"
+}
+
+# NOTE: the gsa token and aws credentials would need to be periodically renewed as both default
+# to 3600 seconds before they expire. This usually is done as a background task in the container,
+# using a sidecar, or via a script configured as credential_process in your AWS config file
+```
+See also the [credential_process](https://aws.amazon.com/blogs/security/access-aws-using-a-google-cloud-platform-native-workload-identity/#define_IAM_role) example for how to set up a script in your **~/.aws/config** for renewing tokens.
+
+
 ## Multiple GKE Clusters using Google Cloud Identity Platform (GCIP) as OIDC Broker
 
 TODO: Add multi-cluster example using https://docs.cloud.google.com/identity-platform/docs/web/oidc as a single OIDC Issuer that acts as an IdP Broker across the cluster token issuers
