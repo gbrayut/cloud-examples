@@ -1,0 +1,185 @@
+# Create a caddy web server with self signed tls certificates for testing GSLB Passthrough TLS via standalone neg
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    istio.io/rev: default
+  name: caddy
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: caddy
+  namespace: caddy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: caddy
+  template:
+    metadata:
+      labels:
+        app: caddy
+    spec:
+      containers:
+      - name: caddy
+        image: caddy:2-alpine
+        imagePullPolicy: IfNotPresent
+        command: ["caddy", "run", "--config", "/Caddyfile"]
+        #env:
+        #- name: ADMIN_USER
+        #  valueFrom:
+        #    secretKeyRef:
+        #      name: basic-auth
+        #      key: user
+        #- name: ADMIN_PASSWORD
+        #  valueFrom:
+        #    secretKeyRef:
+        #      name: basic-auth
+        #      key: password
+        resources:
+          limits:
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /Caddyfile
+          name: caddy-config
+          subPath: Caddyfile
+      volumes:
+        - name: caddy-config
+          configMap:
+            name: caddy-config
+            items:
+              - key: Caddyfile
+                path: Caddyfile
+                mode: 0644
+---
+# This will create a named Standalone NEG for each zone where pods are deployed https://cloud.google.com/kubernetes-engine/docs/how-to/standalone-neg
+# If name is omited it will generate a name like: k8s1-CLUSTER_UID-NAMESPACE-SERVICE-PORT-RANDOM_HASH
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "caddy-sa-neg"
+  namespace: caddy
+  # https://cloud.google.com/kubernetes-engine/docs/concepts/service-load-balancer-parameters#service_parameters
+  annotations:
+    cloud.google.com/neg: '{"exposed_ports": {"443":{"name": "caddy-tls"}}}'
+spec:
+  ports:
+  - port: 443
+    targetPort: 8443  # This is the listening port inside the container and should match the firewall rules
+    protocol: TCP
+    appProtocol: tls
+    name: tls
+  selector:
+    app: caddy
+  type: ClusterIP   # Can still use other types as well but ClusterIP is usually recommended
+---
+# Optional secondary service for testing caddy pods directly
+apiVersion: v1
+kind: Service
+metadata:
+  name: caddy
+  namespace: caddy
+  annotations:
+    # https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#create
+    networking.gke.io/load-balancer-type: "Internal"
+    networking.gke.io/internal-load-balancer-allow-global-access: "true"
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+    appProtocol: http
+    name: http
+  - port: 443
+    targetPort: 8443
+    appProtocol: https
+    name: https
+  selector:
+    app: caddy
+  type: LoadBalancer    # Could use ClusterIP instead, but internal NLB for direct testing of caddy can be useful
+---
+# Configure caddy webserver to listen on 8080 (http) and 8443 (https with self signed certs)
+# tls_internal will generate self signed certs for example.com, caddy.example.com, and example.net
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: caddy-config
+  namespace: caddy
+  labels:
+    app: caddy
+data:
+  # https://caddyserver.com/docs/caddyfile
+  Caddyfile: |
+    {
+    	admin 127.0.0.1:2019 # https://caddyserver.com/docs/api
+    	auto_https off
+    	#email
+      
+      local_certs
+      skip_install_trust
+
+      # https://caddyserver.com/docs/caddyfile/directives/log#log
+      log default {
+        format console
+        level debug
+      }
+    }
+
+    # http backend
+    http://:8080 {
+      log
+
+    	respond 200 {
+        # add trailing newline to http response
+    		body `success on http
+    `
+    		close
+    	}
+    }
+
+    # https backends
+    # Must specify domain(s) if you want caddy to generate internal certs.
+    https://example.com:8443 https://caddy.example.com:8443 https://example.net:8443 {
+      log
+
+    	tls internal {
+        on_demand
+        insecure_secrets_log /tmp/cert.log
+      }
+
+      header /* x-testing "this is a test 123"
+
+    	respond 200 {
+    		body `success on https
+          host: {http.request.host}
+          path: {http.request.uri.path}
+    `
+    		close
+    	}
+    }
+
+    # pod-to-pod https backends
+    https://caddy.caddy.svc.cluster.local:8443 {
+      log
+
+    	tls internal {
+        on_demand
+        insecure_secrets_log /tmp/cert.log
+      }
+
+      header /* x-testing "this is a test 123"
+
+    	respond 200 {
+    		body `success on https k8s svc discovery
+          host: {http.request.host}
+          path: {http.request.uri.path}
+    `
+    		close
+    	}
+    }
+
+# Testing NLB from VM on VPC
+#  curl -vs http://10.253.1.6
+#  curl -vsk --resolve example.com:443:10.253.1.6 https://example.com
+#  curl -vsk --resolve example.net:443:10.253.1.6 https://example.net
+#  curl -vsk --resolve caddy.example.com:443:10.253.1.6 https://caddy.example.com
