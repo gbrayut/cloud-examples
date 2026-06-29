@@ -1,0 +1,174 @@
+# ALB with mTLS to validate client certificates https://docs.cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#configure-frontend-mtls
+# see https://cloud.google.com/kubernetes-engine/docs/how-to/gatewayclass-capabilities
+kind: Gateway
+apiVersion: gateway.networking.k8s.io/v1beta1
+metadata:
+  name: whereami-frontend-mtls
+  namespace: test-gclb
+  annotations:
+    # Best practice when using global external is Certificate Map and Google Managed Certificates
+    # See https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-certificate-manager
+    networking.gke.io/certmap: gke-gateway-map
+spec:
+  gatewayClassName: gke-l7-global-external-managed  # also works on gke-l7-regional-external-managed and gke-l7-rilb
+  
+  #addresses:
+  #- type: NamedAddress
+  #  value: whereami-static-ip
+  
+  listeners:
+  # Optional http listener. See HTTPS Redirect filter in HTTPRoute
+  - name: http
+    protocol: HTTP
+    port: 80
+
+  - name: https
+    protocol: HTTPS
+    port: 443
+    
+    # Use these tls options if you are NOT using the certificate map annotation
+    #tls:
+    #  mode: Terminate    # Must terminate, Passthrough only supported on a few GCLB classes when using tlsroute      
+    #  options: 
+    #    # regional LBs can't use certmap, instead specify individual Certificate Manager certs https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-ssl-certificate
+    #    networking.gke.io/pre-shared-certs: "test-ingress,example-cert"
+    #    # or for Kubernetes Secrets see https://docs.cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-secret
+  
+  # require client mTLS certificates https://docs.cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#configure-frontend-mtls-api
+  tls:
+    frontend:
+      default:
+        validation:
+          mode: AllowInsecureFallback # AllowValidOnly  # set to AllowInsecureFallback to accept requests if the client certificate is not presented or fails verification
+          caCertificateRefs:
+          - group: ""
+            kind: "ConfigMap"
+            name: "client-issuing-ca"
+---
+# Uncomment this to force HTTP to HTTPS redirect https://docs.cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways#configure_http-to-https_redirects
+kind: HTTPRoute
+apiVersion: gateway.networking.k8s.io/v1beta1
+metadata:
+  name: http-to-https-redirect
+  namespace: test-gclb
+spec:
+  parentRefs:
+  - namespace: test-gclb
+    name: whereami-frontend-mtls
+    sectionName: http
+  rules:
+  - filters:
+    - type: RequestRedirect
+      requestRedirect:
+        scheme: https
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: whereami-frontend-mtls-route
+  namespace: test-gclb
+spec:
+  parentRefs:
+  - name: whereami-frontend-mtls
+    sectionName: https
+  #hostnames:
+  #- "*.example.com"
+  rules:    # More examples at https://gateway-api.sigs.k8s.io/api-types/httproute/#backendrefs-optional
+
+  # Using "method: GET" in a match is not supported and will result in GWCER104 error message
+  # kubectl describe gtw -n test-gclb whereami-lb-managed
+  # Events or check https://console.cloud.google.com/kubernetes/gateways
+  # Warning SYNC 86s sc-gateway-controller  failed to translate Gateway "test-gclb/whereami-lb-managed": Error GWCER104: HTTPRoute "test-gclb/whereami-route-managed" is misconfigured, err: Matching by method is not supported, expected empty method, got "GET".
+
+  # Using queryParams Exact or RegularExpression is accepted but the GCLB routeRules it generates are incorrect. Just "- prefixMatch: /" without any queryParameterMatches values
+  # Looks like Query Parameters are not supported on GKE Gateway API https://cloud.google.com/kubernetes-engine/docs/how-to/gatewayclass-capabilities#spec-rules
+  #- matches:
+  #  - queryParams:
+  #    - type: Exact
+  #      name: spread
+  #      value: "disabled"
+  #    #- type: RegularExpression
+  #    #  name: regex
+  #    #  value: "no-spread-.*"
+  #  backendRefs:
+  #  - name: whereami
+  #    port: 80
+
+  # Send /no-spread* requests to gke-gclb-misc/base-whereami.yaml
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /canary
+    backendRefs:
+    - name: whereami
+      port: 80
+    # Strip /canary prefix when forwarding to backend
+    filters:
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /canary
+    # Also add some custom headers on proxied request
+    - type: RequestHeaderModifier
+      requestHeaderModifier:
+        add:
+        - name: x-is-canary
+          value: "true"
+  # Send everything else to gke-gclb-misc/base-whereami-spread.yaml
+  - matches:
+    - path:
+        value: /
+    backendRefs:
+    - name: whereami
+      port: 80
+    # add mtls variables as headers when proxying request to the backend https://docs.cloud.google.com/load-balancing/docs/https/custom-headers#mtls-variables
+    filters:
+    - type: RequestHeaderModifier
+      requestHeaderModifier:
+        add:
+        - name: x-mtls-details
+          value: "present:{client_cert_present} verified:{client_cert_chain_verified} error:{client_cert_error}"
+        - name: x-mtls-fingerprint
+          value: "{client_cert_sha256_fingerprint}"
+        - name: x-mtls-serial-number
+          value: "{client_cert_serial_number}"
+        - name: x-mtls-spiffe_id
+          value: "{client_cert_spiffe_id}"
+        - name: x-mtls-sans-dns
+          value: "{client_cert_dnsname_sans}"
+        - name: x-mtls-subject
+          value: "{client_cert_subject_dn}"
+        - name: x-mtls-cert-leaf
+          value: "{client_cert_leaf}"
+
+#
+# Testing
+#
+
+# kubectl apply -f https://github.com/gbrayut/cloud-examples/raw/refs/heads/main/gke-gclb-misc/base-whereami.yaml
+# kubectl apply -f 
+
+# kubectl get pod,svc,gateway -n test-gclb 
+# kubectl get events -n test-gclb
+# kubectl describe gtw -n test-gclb whereami-frontend-mtls
+
+# ALB_IP=$(kubectl get gtw whereami-frontend-mtls -n test-gclb -o=jsonpath='{.status.addresses[0].value}')
+
+# This should result in an "HTTP/1.1 302 Found" with redirect "Location: https://example.com:443/"
+# curl -vs --resolve example.com:80:$ALB_IP http://example.com
+
+# This should result in a failed connection when using "mode: AllowValidOnly" which is the default
+# curl -vsk --resolve example.com:443:$ALB_IP https://example.com
+#* Request completely sent off
+#* Send failure: Broken pipe
+#* OpenSSL SSL_read: OpenSSL/3.6.2: error:0A000126:SSL routines::unexpected eof while reading, errno 32
+#* Failed receiving HTTP2 data: 56(Failure when receiving data from the peer)
+#* OpenSSL SSL_write: SSL_ERROR_SYSCALL, errno 0
+
+# But will start working if you provide a valid client certificate
+# curl -vsk --cert client-123.mtls.example.com.crt --key client-123.mtls.example.com.key --resolve example.com:443:$ALB_IP https://example.com | jq .headers
+
+
+
+# curl -sk --resolve example.com:443:$ALB_IP https://example.com/canary | jq .headers
