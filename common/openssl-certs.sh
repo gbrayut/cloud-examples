@@ -19,27 +19,36 @@ commonName                = *.example.com
 DNS.1                     = *.example.com
 EOF
 
+
+PROJECT_ID=gregbray-testing
+
 # New private key and wildcard Certificate Signing Request
-openssl genrsa -out example_certs/star.pem 2048
+openssl genrsa -out example_certs/star-example.pem 2048
 openssl req -new -config example_certs/star-example.conf \
-  -key example_certs/star.pem -out example_certs/star.csr
+  -key example_certs/star-example.pem -out example_certs/star-example.csr
 
 # Generate public x509 certificate from CSR and private key
-openssl x509 -req -signkey example_certs/star.pem -in example_certs/star.csr \
-  -out example_certs/star.crt -extfile example_certs/star-example.conf \
-  -extensions extension_requirements -days 365
+openssl x509 -req -signkey example_certs/star-example.pem -in example_certs/star-example.csr \
+  -out example_certs/star-example.crt -extfile example_certs/star-example.conf \
+  -extensions extension_requirements -days 3650
 
-# Upload for use in global GCLB
-gcloud compute ssl-certificates create star-example-com \
-  --certificate=example_certs/star.crt --private-key=example_certs/star.pem \
-  --global --project my-gcp-project
+# Certificate Manager global self-managed certificate for use in global cert maps
+gcloud services enable certificatemanager.googleapis.com --project $PROJECT_ID
+gcloud certificate-manager certificates create wildcard-example --project $PROJECT_ID \
+    --certificate-file="./example_certs/star-example.crt" \
+    --private-key-file="./example_certs/star-example.pem"
+
+# Create global certificate map with one default entry
+gcloud certificate-manager maps create gke-gateway-map --location global --project $PROJECT_ID
+gcloud certificate-manager maps entries create default-wildcard --project $PROJECT_ID \
+  --map gke-gateway-map --certificates wildcard-example --set-primary
+
+# Also create a Regional Certificate for use in Regional ALB / Inference Gateway (no cert map)
+gcloud certificate-manager certificates create uc1-wildcard --project $PROJECT_ID \
+    --certificate-file="./example_certs/star-example.crt" \
+    --private-key-file="./example_certs/star-example.pem" \
+    --location="us-central1"
 
 # Or upload to GKE cluster for use in istio-ingressgateway (Must be same namespace as gateway deployment)
 kubectl create -n istio-ingress secret tls shared-istio-gw-wildcard-cert \
-  --key=example_certs/star.pem --cert=example_certs/star.crt
-
-# Or create a Regional Certificate Map for use in Regional ALB / Inference Gateway
-gcloud certificate-manager certificates create uc1-wildcard \
-    --certificate-file=./example_certs/star.crt \
-    --private-key-file=./example_certs/star.pem" \
-    --location="us-central1"
+  --key=example_certs/star-example.pem --cert=example_certs/star-example.crt

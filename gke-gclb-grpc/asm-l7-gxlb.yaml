@@ -63,7 +63,7 @@ spec:
   hostnames:
   - grpc.example.com
   - grpc-9001.example.com
-  rules:    # More examples at https://gateway-api.sigs.k8s.io/api-types/httproute/#backendrefs-optional
+  rules:    # More examples at https://gateway-api.sigs.k8s.io/reference/api-types/httproute/#rules
   - matches:
     - path:
         type: PathPrefix

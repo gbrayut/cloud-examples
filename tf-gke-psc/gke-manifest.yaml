@@ -47,7 +47,7 @@ spec:
   - name: whereami-rilb
   #hostnames:
   #- "*.example.com"
-  rules:    # More examples at https://gateway-api.sigs.k8s.io/api-types/httproute/#backendrefs-optional
+  rules:    # More examples at https://gateway-api.sigs.k8s.io/reference/api-types/httproute/#rules
 
   # Send everything to gke-gclb-misc/base-whereami-spread.yaml example deployment
   - matches:

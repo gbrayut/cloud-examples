@@ -39,7 +39,7 @@ spec:
   - name: whereami-lb-managed
   #hostnames:
   #- "*.example.com"
-  rules:    # More examples at https://gateway-api.sigs.k8s.io/api-types/httproute/#backendrefs-optional
+  rules:    # More examples at https://gateway-api.sigs.k8s.io/reference/api-types/httproute/#rules
 
   # Using "method: GET" in a match is not supported and will result in GWCER104 error message
   # kubectl describe gtw -n test-gclb whereami-lb-managed

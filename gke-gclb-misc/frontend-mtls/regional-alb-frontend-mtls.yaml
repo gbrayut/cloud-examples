@@ -1,38 +1,29 @@
-# Global ALB with mTLS to validate client certificates https://docs.cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#configure-frontend-mtls
+# Regional External ALB with mTLS to validate client certificates https://docs.cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#configure-frontend-mtls
 # see https://cloud.google.com/kubernetes-engine/docs/how-to/gatewayclass-capabilities
 kind: Gateway
 apiVersion: gateway.networking.k8s.io/v1beta1
 metadata:
-  name: whereami-frontend-mtls
+  name: whereami-frontend-mtls-uc1
   namespace: test-gclb
-  annotations:
-    # Best practice when using global external is Certificate Map and Google Managed Certificates
-    # See https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-certificate-manager
-    networking.gke.io/certmap: gke-gateway-map
 spec:
-  gatewayClassName: gke-l7-global-external-managed  # also works on gke-l7-regional-external-managed and gke-l7-rilb
+  gatewayClassName: gke-l7-regional-external-managed  # also works on gke-l7-global-external-managed and gke-l7-rilb
   
   #addresses:
   #- type: NamedAddress
   #  value: whereami-static-ip
   
   listeners:
-  # Optional http listener. See HTTPS Redirect filter in HTTPRoute
-  #- name: http
-  #  protocol: HTTP
-  #  port: 80
 
   - name: https
     protocol: HTTPS
     port: 443
     
-    # Use these tls options if you are NOT using the certificate map annotation
-    #tls:
-    #  mode: Terminate    # Must terminate, Passthrough only supported on a few GCLB classes when using tlsroute      
-    #  options: 
-    #    # regional LBs can't use certmap, instead specify individual Certificate Manager certs https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-ssl-certificate
-    #    networking.gke.io/cert-manager-certs: "test-ingress,example-cert"
-    #    # or for Kubernetes Secrets see https://docs.cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-secret
+    tls:
+      mode: Terminate    # Must terminate, Passthrough only supported on a few GCLB classes when using tlsroute      
+      options: 
+        # regional LBs can't use certmap, instead specify individual Certificate Manager certs https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-ssl-certificate
+        networking.gke.io/cert-manager-certs: "uc1-wildcard"
+        # or for Kubernetes Secrets see https://docs.cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-secret
   
   # require client mTLS certificates https://docs.cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#configure-frontend-mtls-api
   tls:
@@ -45,31 +36,14 @@ spec:
             kind: "ConfigMap"
             name: "client-issuing-ca"
 ---
-# Uncomment this to force HTTP to HTTPS redirect https://docs.cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways#configure_http-to-https_redirects
-#kind: HTTPRoute
-#apiVersion: gateway.networking.k8s.io/v1beta1
-#metadata:
-#  name: http-to-https-redirect
-#  namespace: test-gclb
-#spec:
-#  parentRefs:
-#  - namespace: test-gclb
-#    name: whereami-frontend-mtls
-#    sectionName: http
-#  rules:
-#  - filters:
-#    - type: RequestRedirect
-#      requestRedirect:
-#        scheme: https
----
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: HTTPRoute
 metadata:
-  name: whereami-frontend-mtls-route
+  name: whereami-frontend-mtls-route-uc1
   namespace: test-gclb
 spec:
   parentRefs:
-  - name: whereami-frontend-mtls
+  - name: whereami-frontend-mtls-uc1
     sectionName: https
   #hostnames:
   #- "*.example.com"
@@ -134,28 +108,11 @@ spec:
 #
 
 # kubectl apply -f https://github.com/gbrayut/cloud-examples/raw/refs/heads/main/gke-gclb-misc/base-whereami.yaml
-# kubectl apply -f 
+# kubectl apply -f <this file>
 
 # kubectl get pod,svc,gateway -n test-gclb 
 # kubectl get events -n test-gclb
-# kubectl describe gtw -n test-gclb whereami-frontend-mtls
+# kubectl describe gtw -n test-gclb whereami-frontend-mtls-uc1
 
-# ALB_IP=$(kubectl get gtw whereami-frontend-mtls -n test-gclb -o=jsonpath='{.status.addresses[0].value}')
-
-# This should result in an "HTTP/1.1 302 Found" with redirect "Location: https://example.com:443/"
-# curl -vs --resolve example.com:80:$ALB_IP http://example.com
-
-# This should result in a failed connection when using "mode: AllowValidOnly" which is the default
-# curl -vsk --resolve example.com:443:$ALB_IP https://example.com
-#* Request completely sent off
-#* Send failure: Broken pipe
-#* OpenSSL SSL_read: OpenSSL/3.6.2: error:0A000126:SSL routines::unexpected eof while reading, errno 32
-#* Failed receiving HTTP2 data: 56(Failure when receiving data from the peer)
-#* OpenSSL SSL_write: SSL_ERROR_SYSCALL, errno 0
-
-# But will start working if you provide a valid client certificate
-# curl -vsk --cert client-123.mtls.example.com.crt --key client-123.mtls.example.com.key --resolve example.com:443:$ALB_IP https://example.com | jq .headers
-
-
-
-# curl -sk --resolve example.com:443:$ALB_IP https://example.com/canary | jq .headers
+# RLB_IP=$(kubectl get gtw whereami-frontend-mtls-uc1 -n test-gclb -o=jsonpath='{.status.addresses[0].value}')
+# curl -vsk --cert client-123.mtls.example.com.crt --key client-123.mtls.example.com.key --resolve example.com:443:$RLB_IP https://example.com | jq .headers

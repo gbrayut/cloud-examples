@@ -62,7 +62,7 @@ spec:
     #sectionName: https   # Uncomment if using RequestRedirect filter above
   hostnames:    # See: kubectl explain httproute.spec.hostnames
   - "*.example.com"   # Use wildcard, or individual entries. Must cover all external host values used in istio gateway/virtualservice resources
-  rules:    # More examples at https://gateway-api.sigs.k8s.io/api-types/httproute/#backendrefs-optional
+  rules:    # More examples at https://gateway-api.sigs.k8s.io/reference/api-types/httproute/#rules
   # http2 testing must use an https backend (https://cloud.google.com/load-balancing/docs/ssl-certificates/encryption-to-the-backends#secure-protocol-considerations)
   #- matches:
   #  - headers:
