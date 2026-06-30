@@ -1,12 +1,12 @@
 # Regional Internal ALB with mTLS to validate client certificates https://docs.cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#configure-frontend-mtls
-# see https://cloud.google.com/kubernetes-engine/docs/how-to/gatewayclass-capabilities
+# see also https://docs.cloud.google.com/load-balancing/docs/mtls
 kind: Gateway
 apiVersion: gateway.networking.k8s.io/v1beta1
 metadata:
   name: whereami-frontend-mtls-uc1-ilb
   namespace: test-gclb
 spec:
-  gatewayClassName: gke-l7-rilb
+  gatewayClassName: gke-l7-rilb	# also works on gke-l7-regional-external-managed and gke-l7-global-external-managed
   
   #addresses:
   #- type: NamedAddress

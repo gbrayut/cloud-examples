@@ -1,5 +1,5 @@
 # Global ALB with mTLS to validate client certificates https://docs.cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#configure-frontend-mtls
-# see https://cloud.google.com/kubernetes-engine/docs/how-to/gatewayclass-capabilities
+# see also https://docs.cloud.google.com/load-balancing/docs/mtls
 kind: Gateway
 apiVersion: gateway.networking.k8s.io/v1beta1
 metadata:
@@ -10,7 +10,7 @@ metadata:
     # See https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway#secure-using-certificate-manager
     networking.gke.io/certmap: gke-gateway-map
 spec:
-  gatewayClassName: gke-l7-global-external-managed  # also works on gke-l7-regional-external-managed and gke-l7-rilb
+  gatewayClassName: gke-l7-global-external-managed  # frontend mTLS also works on gke-l7-regional-external-managed and gke-l7-rilb
   
   #addresses:
   #- type: NamedAddress
@@ -134,7 +134,7 @@ spec:
 #
 
 # kubectl apply -f https://github.com/gbrayut/cloud-examples/raw/refs/heads/main/gke-gclb-misc/base-whereami.yaml
-# kubectl apply -f 
+# kubectl apply -f <this file>
 
 # kubectl get pod,svc,gateway -n test-gclb 
 # kubectl get events -n test-gclb
@@ -142,7 +142,7 @@ spec:
 
 # ALB_IP=$(kubectl get gtw whereami-frontend-mtls -n test-gclb -o=jsonpath='{.status.addresses[0].value}')
 
-# This should result in an "HTTP/1.1 302 Found" with redirect "Location: https://example.com:443/"
+# If redirect is configured this should result in an "HTTP/1.1 302 Found" with "Location: https://example.com:443/" header
 # curl -vs --resolve example.com:80:$ALB_IP http://example.com
 
 # This should result in a failed connection when using "mode: AllowValidOnly" which is the default
@@ -153,9 +153,5 @@ spec:
 #* Failed receiving HTTP2 data: 56(Failure when receiving data from the peer)
 #* OpenSSL SSL_write: SSL_ERROR_SYSCALL, errno 0
 
-# But will start working if you provide a valid client certificate
+# The request will start working if you provide a valid client certificate
 # curl -vsk --cert client-123.mtls.example.com.crt --key client-123.mtls.example.com.key --resolve example.com:443:$ALB_IP https://example.com | jq .headers
-
-
-
-# curl -sk --resolve example.com:443:$ALB_IP https://example.com/canary | jq .headers
