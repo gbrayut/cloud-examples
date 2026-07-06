@@ -1,0 +1,20 @@
+# Apply newer 1.5.0 InferencePool CRD from upstream release to a GKE 1.36 Cluster
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# This will apply the CRD from upstream 1.5.0 release (along with two additional changes outlined below)
+# Upstream CRD source: https://github.com/kubernetes-sigs/gateway-api-inference-extension/tree/main/config/crd/bases
+# NOTE: this likely will eventually move into Gateway API upstream release per https://gateway-api-inference-extension.sigs.k8s.io/faq/#why-isnt-this-project-in-the-main-gateway-api-repo
+resources:
+  - https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/refs/tags/v1.5.0/config/crd/bases/inference.networking.k8s.io_inferencepools.yaml
+
+# "mode: NewerRevision" will prevent GKE from reconciling "newer" applied versions back to the CRD version pinned for that GKE release
+labels:
+  - pairs:
+      # Required label instructing GKE to only reconcile to pinned version if it is newer than the current version
+      addonmanager.kubernetes.io/mode: NewerRevision
+
+# Add the component-version annotation using a higher version number than what GKE is currently using
+commonAnnotations:
+  # GKE currently pins InferencePool to "bundle-version: v1.4.0" and Gateway API CRDs to component-version 1.5.0-gke.3505 in v1.36.0-gke.3302001
+  components.gke.io/component-version: "1.5.0-gke.9999"  # or just "1.5.1" or "1.6.0" if applying latest Gateway API CRD release
