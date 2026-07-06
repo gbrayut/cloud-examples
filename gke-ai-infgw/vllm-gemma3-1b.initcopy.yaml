@@ -1,0 +1,136 @@
+# Based on https://cloud.google.com/kubernetes-engine/docs/tutorials/serve-gemma-gpu-vllm#deploy-vllm
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-gemma-3-1b
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-gemma-3-1b
+  strategy:
+    type: Recreate  # Use this for faster updates when troubleshooting (but not in production)
+  template:
+    metadata:
+      labels:
+        app: vllm-gemma-3-1b
+    spec:
+      serviceAccountName: default
+      terminationGracePeriodSeconds: 15  # again faster troubleshooting but production should have better drain time
+      initContainers:
+        # https://github.com/google-gemini/gemma-cookbook/tree/main/Demos/Gemma-on-Cloudrun#pre-built-docker-images
+        - name: copy-gemma-model
+          image: us-docker.pkg.dev/cloudrun/container/gemma/gemma3-1b:latest
+          # The Kubernetes "image" volume feature is alpha and can be buggy.
+          # Using an init container to copy the model to a shared emptyDir volume is a more stable pattern.
+          # The source image has the model at /gemma. We copy its contents to the shared volume.
+          command: ["cp", "-r", "/gemma/.", "/model-data"]
+          volumeMounts:
+            - name: gemma
+              mountPath: /model-data
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "2Gi"
+            limits:
+              cpu: "1"
+              memory: "4Gi"
+      containers:
+        - name: inference-server
+          image: vllm/vllm-openai:v0.8.5.post1  #v0.9.0 and newer have RuntimeError: Failed to infer device type
+          # TODO: find gcp hosted image instead
+          resources:
+            requests:
+              cpu: "6"
+              memory: "25Gi"
+              ephemeral-storage: 10Gi
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "6"
+              memory: "25Gi"
+              ephemeral-storage: 10Gi
+              nvidia.com/gpu: "1"
+          # kubectl exec -t -n gemma deploy/vllm-gemma-3-1b -- vllm serve --help
+          #args:
+          #  - --model=$(MODEL)
+          #  - --tensor-parallel-size=1
+
+# Successfully pulled image "us-docker.pkg.dev/cloudrun/container/gemma/gemma3-1b:latest" in 45.694s (45.694s including waiting). Image size: 2007895242 bytes.
+# Successfully pulled image "vllm/vllm-openai:v0.8.5.post1" in 3m12.174s (3m12.174s including waiting). Image size: 9044824246 bytes.
+
+          # Override entrypoint for testing
+          command: [ "/bin/bash", "-c", "--" ]
+          args: [ "tail -f /dev/null" ]
+
+          # https://docs.vllm.ai/en/latest/configuration/env_vars.html
+          env:
+            #- name: VLLM_LOGGING_LEVEL
+            #  value: DEBUG  # for troubleshooting RuntimeError: Failed to infer device type
+            - name: MODEL
+              value: google/gemma-3-1b-it
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: hf_api_token
+          volumeMounts:
+            - mountPath: /dev/shm
+              name: dshm
+            - mountPath: /gemma
+              name: gemma
+              readOnly: true
+          ports:
+            - containerPort: 8000
+              name: http
+              protocol: TCP
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 15   # Helps drain connections
+          #livenessProbe:
+          #  httpGet:
+          #    path: /health
+          #    port: http
+          #    scheme: HTTP
+          #  periodSeconds: 1
+          #  successThreshold: 1
+          #  failureThreshold: 5
+          #  timeoutSeconds: 1
+          #readinessProbe:
+          #  httpGet:
+          #    path: /health
+          #    port: http
+          #    scheme: HTTP
+          #  periodSeconds: 1
+          #  successThreshold: 1
+          #  failureThreshold: 1
+          #  timeoutSeconds: 1
+          #startupProbe:
+          #  failureThreshold: 3600
+          #  initialDelaySeconds: 2
+          #  periodSeconds: 1
+          #  httpGet:
+          #    path: /health
+          #    port: http
+          #    scheme: HTTP
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+        - name: gemma
+          emptyDir: {}
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-l4
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-gemma-3-1b
+spec:
+  selector:
+    app: vllm-gemma-3-1b
+  type: ClusterIP
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
