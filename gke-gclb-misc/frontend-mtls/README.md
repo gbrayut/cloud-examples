@@ -50,6 +50,7 @@ curl -sk --cert client-123.mtls.example.com.crt --key client-123.mtls.example.co
   "X-Mtls-Fingerprint": "b3sFlNlCkzlL0VvbiwqjTTFisd5bssdayLSSwx18AuI",
   "X-Mtls-Sans-Dns": "Y2xpZW50LTEyMy5tdGxzLmV4YW1wbGUuY29t",
   "X-Mtls-Serial-Number": "00:9a:24:3d:49:a2:2c:b6:64:e0:b4:88:aa:27:6c:b1:8b",
+  "X-Mtls-Spiffe-Id": "spiffe://example.com/external-clients/account-id/0123456789",
   "X-Mtls-Subject": "MCYxJDAiBgNVBAMTG2NsaWVudC0xMjMubXRscy5leGFtcGxlLmNvbQ=="
 }
 
@@ -100,7 +101,8 @@ kubectl apply -f https://github.com/gbrayut/cloud-examples/raw/refs/heads/main/g
 RLB_IP=$(kubectl get gtw whereami-frontend-mtls-uc1 -n test-gclb -o=jsonpath='{.status.addresses[0].value}')
 curl -sk --cert client-123.mtls.example.com.crt --key client-123.mtls.example.com.key --resolve example.com:443:$RLB_IP https://example.com | jq '.headers' | tee /tmp/headers.json
 
-# Test internal gke-l7-rilb
+# Test internal gke-l7-rilb (from VM or Pod with client certs inside the VPC)
+kubectl exec -it -n test-gclb deploy/whereami -- /bin/bash
 ILB_IP=$(kubectl get gtw whereami-frontend-mtls-uc1-ilb -n test-gclb -o=jsonpath='{.status.addresses[0].value}')
 curl -sk --cert client-123.mtls.example.com.crt --key client-123.mtls.example.com.key --resolve example.com:443:$ILB_IP https://example.com | jq '.headers' | tee /tmp/headers.json
 ```

@@ -91,7 +91,7 @@ spec:
           value: "{client_cert_sha256_fingerprint}"
         - name: x-mtls-serial-number
           value: "{client_cert_serial_number}"
-        - name: x-mtls-spiffe_id
+        - name: x-mtls-spiffe-id
           value: "{client_cert_spiffe_id}"
         - name: x-mtls-sans-dns
           value: "{client_cert_dnsname_sans}"
