@@ -8,7 +8,7 @@ spec:
   podTemplate:
     metadata:
       labels:
-        sandbox: my-sandbox
+        sandbox: agentsandbox-example-sandbox
     spec:
       runtimeClassName: gvisor            # Required
       automountServiceAccountToken: false # Required

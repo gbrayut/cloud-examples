@@ -9,7 +9,7 @@ spec:
   podTemplate:
     metadata:
       labels:
-        sandbox: my-sandbox
+        sandbox: agentsandbox-tls-podcertificate-sandbox
     spec:
       runtimeClassName: gvisor            # Required
       automountServiceAccountToken: false # Required
@@ -25,9 +25,25 @@ spec:
         effect: "NoSchedule"              # Required
       serviceAccountName: default
       containers:
-      - name: my-container
-        image: busybox
-        command: ["/bin/sh", "-c", "sleep infinity"]
+      # https://github.com/mendhak/docker-http-https-echo
+      - name: echo-server
+        image: ghcr.io/mendhak/http-https-echo:41
+        ports:
+        - containerPort: 8080
+        - containerPort: 8443
+        env:
+        - name: HTTP_PORT
+          value: "8080"
+        - name: HTTPS_PORT
+          value: "8443"
+        - name: MTLS_ENABLE   # will include .clientCertificate in the response but does not do any validation
+          value: "1"
+        # Configure custom certs for app to use instead of self signed from image https://github.com/mendhak/docker-http-https-echo#use-your-own-certificates
+        - name: HTTPS_CERT_FILE
+          value: "/var/run/secrets/workload-spiffe-credentials/certificates.pem"
+        - name: HTTPS_KEY_FILE
+          value: "/var/run/secrets/workload-spiffe-credentials/private_key.pem"
+        # A production app would also parse the trust_bundles.json file or use it's own custom settings to configure mTLS client validation
         resources:
           requests:
             cpu: "250m"
@@ -39,16 +55,6 @@ spec:
           capabilities:
             drop: ["ALL"]     # Required
           allowPrivilegeEscalation: false
-        env:
-        - name: POD_NAME
-          valueFrom:
-            fieldRef:
-              apiVersion: v1
-              fieldPath: metadata.name
-        - name: POD_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
         volumeMounts:
         - name: fleet-spiffe-credentials
           mountPath: /var/run/secrets/workload-spiffe-credentials
@@ -60,6 +66,29 @@ spec:
           volumeAttributes:
             signerName: spiffe.gke.io/fleet-svid
             trustDomain: fleet-project/svc.id.goog
+---
+# GKE Sandbox does not allow kubectl port forwarding (Agent Sandbox workloads are expected to use Sandbox Router instead)
+# This will create an Internal or External LoadBalancer for testing
+apiVersion: v1
+kind: Service
+metadata:
+  name: agentsandbox-tls-podcertificate
+  namespace: test-sandbox
+spec:
+  selector:
+    sandbox: agentsandbox-tls-podcertificate-sandbox
+  loadBalancerClass: "networking.gke.io/l4-regional-internal"   # omit this for external or use networking.gke.io/l4-regional-external 
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 8080
+    - name: https
+      protocol: TCP
+      port: 443
+      targetPort: 8443
+  type: LoadBalancer
+
 
 # View certificate details in pod
 # kubectl exec -it -n test-sandbox agentsandbox-tls-podcertificate -- /bin/sh -c 'ls /var/run/secrets/workload-spiffe-credentials/'
@@ -69,8 +98,28 @@ spec:
 # kubectl exec -it -n test-sandbox agentsandbox-tls-podcertificate -- /bin/sh -c 'cat /var/run/secrets/workload-spiffe-credentials/certificates.pem' | openssl x509 -noout -text | grep -EA1 'Issuer|Not Before|Subject Alternative Name'
 #        Issuer: C=US, ST=California, L=Mountain View, O=Google LLC, OU=Cloud, CN=us-central1 gcp-default-ca-subordinate
 #        Validity
-#            Not Before: Aug 20 16:40:28 2026 GMT
-#            Not After : Aug 21 16:40:27 2026 GMT
+#            Not Before: Aug 20 21:50:52 2026 GMT
+#            Not After : Aug 21 21:50:51 2026 GMT
 #--
 #            X509v3 Subject Alternative Name: critical
 #                URI:spiffe://gregbray-vpc.svc.id.goog/ns/test-sandbox/sa/default
+
+# Test HTTP or HTTPS connections via Service loadbalancer using optional mTLS (client cert and key)
+# curl -vsk --cert client-123.mtls.example.com.crt --key client-123.mtls.example.com.key https://10.1.2.3 | jq '.clientCertificate |= del(.modulus, .pubkey, .fingerprint512, .raw)'
+# Here is some of the expected results:
+#* SSL connection using TLSv1.3 / TLS_AES_256_GCM_SHA384 / X25519MLKEM768 / id-ecPublicKey
+#* ALPN: server accepted http/1.1
+#* Server certificate:
+#*   subject: 
+#*   start date: Aug 20 21:50:52 2026 GMT
+#*   expire date: Aug 21 21:50:51 2026 GMT
+#*   issuer: C=US; ST=California; L=Mountain View; O=Google LLC; OU=Cloud; CN=us-central1 gcp-default-ca-subordinate
+#...
+#"clientCertificate": {
+#    "subject": {
+#      "CN": "client-123.mtls.example.com"
+#    },
+#    "issuer": {
+#      "CN": "issuer.mtls.example.com"
+#    },
+#    "subjectaltname": "DNS:client-123.mtls.example.com",
