@@ -1,0 +1,76 @@
+# Managed Workload Identity SPIFFE Certificates in GKE Sandbox using GKE podcertificate CSI driver
+# See required setup instructions at https://docs.cloud.google.com/iam/docs/create-managed-workload-identities-gke
+apiVersion: agents.x-k8s.io/v1alpha1
+kind: Sandbox
+metadata:
+  name: agentsandbox-tls-podcertificate
+  namespace: test-sandbox
+spec:
+  podTemplate:
+    metadata:
+      labels:
+        sandbox: my-sandbox
+    spec:
+      runtimeClassName: gvisor            # Required
+      automountServiceAccountToken: false # Required
+      securityContext:
+        runAsNonRoot: true                # Required
+        runAsUser: 1000                   # Required if image defaults to root (e.g. busybox)
+        runAsGroup: 1000
+      nodeSelector:
+        sandbox.gke.io/runtime: gvisor    # Required
+      tolerations:
+      - key: "sandbox.gke.io/runtime"
+        value: "gvisor"
+        effect: "NoSchedule"              # Required
+      serviceAccountName: default
+      containers:
+      - name: my-container
+        image: busybox
+        command: ["/bin/sh", "-c", "sleep infinity"]
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "500m"
+            memory: "1Gi"     # Required
+        securityContext:
+          capabilities:
+            drop: ["ALL"]     # Required
+          allowPrivilegeEscalation: false
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: fleet-spiffe-credentials
+          mountPath: /var/run/secrets/workload-spiffe-credentials
+          readOnly: true
+      volumes:
+      - name: fleet-spiffe-credentials
+        csi:
+          driver: podcertificate.gke.io
+          volumeAttributes:
+            signerName: spiffe.gke.io/fleet-svid
+            trustDomain: fleet-project/svc.id.goog
+
+# View certificate details in pod
+# kubectl exec -it -n test-sandbox agentsandbox-tls-podcertificate -- /bin/sh -c 'ls /var/run/secrets/workload-spiffe-credentials/'
+# ca_certificates.pem credential-bundle.pem trust_bundles.json certificates.pem private_key.pem
+
+# View SPIFFE certificate
+# kubectl exec -it -n test-sandbox agentsandbox-tls-podcertificate -- /bin/sh -c 'cat /var/run/secrets/workload-spiffe-credentials/certificates.pem' | openssl x509 -noout -text | grep -EA1 'Issuer|Not Before|Subject Alternative Name'
+#        Issuer: C=US, ST=California, L=Mountain View, O=Google LLC, OU=Cloud, CN=us-central1 gcp-default-ca-subordinate
+#        Validity
+#            Not Before: Aug 20 16:40:28 2026 GMT
+#            Not After : Aug 21 16:40:27 2026 GMT
+#--
+#            X509v3 Subject Alternative Name: critical
+#                URI:spiffe://gregbray-vpc.svc.id.goog/ns/test-sandbox/sa/default

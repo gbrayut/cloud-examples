@@ -1,0 +1,108 @@
+# Kubernetes Projected Volumes in GKE Sandbox https://kubernetes.io/docs/concepts/storage/projected-volumes/
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: test-configmap
+  namespace: test-sandbox
+data:
+  # multi-line sample file
+  testfile: |
+    one
+    two
+    three
+---
+apiVersion: agents.x-k8s.io/v1alpha1
+kind: Sandbox
+metadata:
+  name: agentsandbox-projected-volume
+  namespace: test-sandbox
+spec:
+  podTemplate:
+    metadata:
+      labels:
+        sandbox: my-sandbox
+    spec:
+      runtimeClassName: gvisor            # Required
+      automountServiceAccountToken: false # Required
+      securityContext:
+        runAsNonRoot: true                # Required
+        runAsUser: 1000                   # Required if image defaults to root (e.g. busybox)
+        runAsGroup: 1000
+      nodeSelector:
+        sandbox.gke.io/runtime: gvisor    # Required
+      tolerations:
+      - key: "sandbox.gke.io/runtime"
+        value: "gvisor"
+        effect: "NoSchedule"              # Required
+      serviceAccountName: default
+      containers:
+      - name: my-container
+        image: busybox
+        command: ["/bin/sh", "-c", "sleep infinity"]
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "500m"
+            memory: "1Gi"     # Required
+        securityContext:
+          capabilities:
+            drop: ["ALL"]     # Required
+          allowPrivilegeEscalation: false
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: projected-values
+          mountPath: "/var/projected"
+          readOnly: true
+      volumes:
+      - name: projected-values
+        projected:
+          defaultMode: 420
+          sources:
+          # Secret from gke-agent-sandbox/agentsandbox-k8s-secrets.yaml
+          - secret:
+              name: k8s-secret
+              items:
+                - key: .secret-file
+                  path: secret_file
+          # Values from pod spec https://kubernetes.io/docs/concepts/workloads/pods/downward-api/
+          - downwardAPI:
+              items:
+              - path: "uid"
+                fieldRef:
+                  fieldPath: metadata.uid
+              - path: "cpu_limit"
+                resourceFieldRef:
+                  containerName: my-container
+                  resource: limits.cpu
+          - configMap:
+              name: test-configmap
+              items:
+              - key: testfile
+                path: config/sample
+                mode: 0444
+          # Projected service account is not allowed in GKE Sandbox. Denied by sandbox-core-policy
+          # The sandboxes "agentsandbox-projected-volume" is invalid: : ValidatingAdmissionPolicy 'sandbox-core-policy' with binding 'sandbox-core-binding' 
+          #   denied request: Security Violation: Projected Service Account Tokens, ClusterTrustBundles, and PodCertificates are prohibited.
+          #- serviceAccountToken:
+          #    path: token
+          #    #audience: https://idp.example.com   # Defaults to Google Cloud Platform, but may need to change audience if targeting another cloud provider
+          #    expirationSeconds: 1800   # default 1h, min 10m, rotated automatically at 80% lifetime
+
+# kubectl exec -it -n test-sandbox agentsandbox-projected-volume -- /bin/sh -c 'grep -H ^ /var/projected/* /var/projected/**/*'
+#/var/projected/cpu_limit:1
+#/var/projected/secret_file:hunter2
+#/var/projected/uid:5a3d4156-61f4-4c97-a065-0a9e62af0eab
+#/var/projected/config/sample:one
+#/var/projected/config/sample:two
+#/var/projected/config/sample:three

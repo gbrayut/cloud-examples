@@ -27,7 +27,7 @@ gcloud secrets add-iam-policy-binding test-secret \
     --member="principal://$PRINCIPAL_BASE/subject/ns/test-secrets/sa/gcloud-ksa"
 
 # Confirm values are mounted into pod filesystem
-kubectl exec -it -n test-secrets gcloud-bare-pod -- /bin/bash -c 'grep . /var/secrets/*.txt'
+kubectl exec -it -n test-secrets gcloud-bare-pod -- /bin/bash -c 'grep -H ^ /var/secrets/*.txt'
 
 # Can also grant access to all KSA in the test-secrets namespace using:
 gcloud secrets add-iam-policy-binding test-secret \

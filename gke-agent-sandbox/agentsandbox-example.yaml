@@ -1,0 +1,50 @@
+# Basic GKE Agent Sandbox example https://docs.cloud.google.com/kubernetes-engine/docs/how-to/how-install-agent-sandbox#alternative_create_a_sandbox_directly
+apiVersion: agents.x-k8s.io/v1alpha1
+kind: Sandbox
+metadata:
+  name: agentsandbox-example
+  namespace: test-sandbox
+spec:
+  podTemplate:
+    metadata:
+      labels:
+        sandbox: my-sandbox
+    spec:
+      runtimeClassName: gvisor            # Required
+      automountServiceAccountToken: false # Required
+      securityContext:
+        runAsNonRoot: true                # Required
+        runAsUser: 1000                   # Required if image defaults to root (e.g. busybox)
+        runAsGroup: 1000
+      nodeSelector:
+        sandbox.gke.io/runtime: gvisor    # Required
+      tolerations:
+      - key: "sandbox.gke.io/runtime"
+        value: "gvisor"
+        effect: "NoSchedule"              # Required
+      serviceAccountName: default
+      containers:
+      - name: my-container
+        image: busybox
+        command: ["/bin/sh", "-c", "sleep infinity"]
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "500m"
+            memory: "1Gi"     # Required
+        securityContext:
+          capabilities:
+            drop: ["ALL"]     # Required
+          allowPrivilegeEscalation: false
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace

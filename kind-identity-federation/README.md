@@ -77,7 +77,7 @@ kubectl apply -f https://raw.githubusercontent.com/gbrayut/cloud-examples/main/k
 kubectl exec -it -n testing gcloud-bare-pod -- /bin/bash
 
 # inside the pod, view the ADC config file and KSA token (decode using https://jwt.io/)
-grep . /var/run/secrets/tokens/k3d-ksa/*
+grep -H ^ /var/run/secrets/tokens/k3d-ksa/*
 
 # use gcloud to test the ADC json config and get ubermint token. If fails make sure jwks is correct on pool.
 gcloud auth application-default print-access-token

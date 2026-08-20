@@ -1,6 +1,5 @@
 # Using GCS buckets as volumes on GKE Pods
-
-[Cloud Storage FUSE](https://docs.cloud.google.com/storage/docs/cloud-storage-fuse/overview) can be used to read or write files in a Cloud Storage bucket as a linux file system. For GKE workloads, Google recommends using Workload Identity Federation and [gcs-fuse-csi-driver](https://github.com/GoogleCloudPlatform/gcs-fuse-csi-driver/tree/main) via fully managed [GKE Addon](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/cloud-storage-fuse-csi-driver), which will create a **gcsfusecsi-node daemonset** to handle privleged operations on each node and injects an unprivliged **gke-gcsfuse-sidecar init container** inside your pods.
+[Cloud Storage FUSE](https://docs.cloud.google.com/storage/docs/cloud-storage-fuse/overview) can be used to read or write files in a Cloud Storage bucket as a linux file system. For GKE workloads, Google recommends using Workload Identity Federation and [gcs-fuse-csi-driver](https://github.com/GoogleCloudPlatform/gcs-fuse-csi-driver/tree/main) via fully managed [GKE Addon](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/cloud-storage-fuse-csi-driver), which will create a **gcsfusecsi-node daemonset** to handle privileged operations on each node and injects an unprivileged **gke-gcsfuse-sidecar init container** inside your pods.
 
 
 ## Initial Setup for CSI Driver
@@ -51,7 +50,7 @@ NAME                               READY   STATUS    RESTARTS   AGE
 basic-ephemeral-7fc5b9bf5f-v9f9v   2/2     Running   0          16s
 basic-ephemeral-7fc5b9bf5f-x6mmp   2/2     Running   0          17s
 
-# Read/write of files in GCS Bucket
+# Read/write files in GCS Bucket
 kubectl exec -it -n test-gcs deploy/basic-ephemeral -c busybox -- /bin/sh \
   -c 'touch /data-this-pod/hello;ls -hal /data/** /data-this-pod/'
 
@@ -78,7 +77,7 @@ stateful-whereami-0                  2/2     Running   0          73s
 stateful-whereami-1                  2/2     Running   0          69s
 stateful-whereami-2                  2/2     Running   0          64s
 
-# Read/write of files in GCS Bucket
+# Read/write files in GCS Bucket
 kubectl exec -it -n test-gcs pod/stateful-whereami-1 -c whereami -- /bin/sh \
   -c 'touch /data-this-pod/hello;ls -hal /data/test-gcs/** /data-this-pod'
 
@@ -104,7 +103,7 @@ persistentvolumeclaim/stateful-whereami-pvc   Bound    stateful-whereami-pv   10
 ```
 
 ## GKE Sandbox and gcsfuse Volumes
-Because the gcs-fuse-csi-driver runs the privliged operations in a separate daemonset, workloads using [GKE Sandbox](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/sandbox-pods) should still be able to access files via gcsfuse volume mounts. In most cases the ephemeral mounts will be the easiest approach, but PV+PVC approach should also work. The [gcsfuse-sandbox-ephemeral.yaml](gcsfuse-sandbox-ephemeral.yaml) shows using ephemeral gscsfuse volumes on `runtimeClassName: gvisor` workloads:
+Because the gcs-fuse-csi-driver runs the privileged operations in a separate daemonset, workloads using [GKE Sandbox](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/sandbox-pods) should still be able to access files via gcsfuse volume mounts. In most cases the ephemeral mounts will be the easiest approach, but PV+PVC approach should also work. The [gcsfuse-sandbox-ephemeral.yaml](gcsfuse-sandbox-ephemeral.yaml) shows using ephemeral gcsfuse volumes on `runtimeClassName: gvisor` workloads:
 
 ```shell
 kubectl apply -f https://github.com/gbrayut/cloud-examples/raw/refs/heads/main/gke-storage-misc/gcsfuse-sandbox-ephemeral.yaml
@@ -124,10 +123,10 @@ kubectl exec -it -n test-gcs deploy/sandbox-ephemeral -c busybox -- /bin/sh -c '
 ```
 
 ## GKE Agent Sandbox and gcsfuse Volumes
-
-The [gcsfuse-agentsandbox-example.yaml](gcsfuse-agentsandbox-example.yaml) and [gcsfuse-agentsandbox-warmpool.yaml](gcsfuse-agentsandbox-warmpool.yaml) shows using ...
+The [GKE Agent Sandbox](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/machine-learning/agent-sandbox) uses the GKE Sandbox to manage isolated, stateful, and single-replica workloads in Kubernetes clusters. The [gcsfuse-agentsandbox-example.yaml](gcsfuse-agentsandbox-example.yaml) and [gcsfuse-agentsandbox-warmpool.yaml](gcsfuse-agentsandbox-warmpool.yaml) examples use PVC to claim volumes backed by GCS. However you can (and often should) stick with the above ephemeral pod level mounts instead as the PV/PVC resources often add a lot of friction without much value (other than causing new ways for things to break or get stuck).
 
 ```shell
+# View pv/pvc and pod/sandbox resources
 $ kubectl get pvc,pv,pod,sandbox -n test-gcs -o wide
 NAME                                          STATUS   VOLUME                 CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE     VOLUMEMODE
 persistentvolumeclaim/agentsandbox-pool-pvc   Bound    agentsandbox-pool-pv   10Gi       RWX                           <unset>                 2m49s   Filesystem
@@ -145,6 +144,7 @@ sandbox.agents.x-k8s.io/agentsandbox-warmpool-q4hbw   2m49s
 sandbox.agents.x-k8s.io/agentsandbox-warmpool-xbx5s   2m49s
 sandbox.agents.x-k8s.io/agentsandbox-warmpool-xxxgq   2m49s
 
+# View SandboxClaim details
 $ kubectl describe sandboxclaim/my-sandbox-claim -n test-gcs
 Name:         my-sandbox-claim
 Namespace:    test-gcs
@@ -175,6 +175,7 @@ Status:
       10.27.128.130
 Events:  <none>
 
+# Read/write files in GCS Bucket
 $ SANDBOX_POD=$(kubectl get -n test-gcs sandboxclaim/my-sandbox-claim -o jsonpath='{.status.sandbox.name}')
 $ kubectl exec -it -n test-gcs $SANDBOX_POD -c my-container -- /bin/sh -c 'touch /data-this-pod/hello;ls -hal /data/test-gcs/** /data-this-pod'
 /data-this-pod:
@@ -189,15 +190,5 @@ $ kubectl exec -it -n test-gcs $SANDBOX_POD -c my-container -- /bin/sh -c 'touch
 /data/test-gcs/agentsandbox-warmpool-xxxgq:
 ```
 
-## TODO:
-https://docs.cloud.google.com/kubernetes-engine/docs/concepts/cloud-storage-fuse-csi-driver
-
-Move over https://github.com/gbrayut/cloud-examples/tree/main/k8s-gcsfuse
-
-https://docs.cloud.google.com/storage/docs/cloud-storage-fuse/profile-based-configurations
-
-https://github.com/GoogleCloudPlatform/gcs-fuse-csi-driver/issues/59#issuecomment-1716967172
-
-example for manual init container when auto token mount is disabled?
-
-file bug for persistentVolumeReclaimPolicy: Delete not working? First confirm expectations using another volume type.
+## Other Links
+* https://docs.cloud.google.com/storage/docs/cloud-storage-fuse/profile-based-configurations
