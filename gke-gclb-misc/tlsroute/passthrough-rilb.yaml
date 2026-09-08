@@ -1,0 +1,77 @@
+# SNI-Based routing via gke-l7-rilb using tls mode passthrough https://gateway-api.sigs.k8s.io/reference/api-types/tlsroute/
+# requires: kubectl apply -f https://github.com/gbrayut/cloud-examples/raw/refs/heads/main/gke-gclb-misc/caddy.yaml 
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: caddy-rilb
+  namespace: caddy
+spec:
+  gatewayClassName: gke-l7-rilb
+  listeners:
+  # Best to use non-overlapping hostnames when sharing a listener port or omit hostname for an Empty listener. Note: Gateway spec limits to 64 listeners
+  # Also note: HTTP connection coalescing for browsers and other clients will reuse connection as long as the resolved IP+Port matches 
+  # and the certificate from original handshake is valid for the new hostname. So wildcards with shared IP+Port listeners may cause unexpected behavior.
+  - name: example-testing
+    protocol: TLS
+    hostname: "testing.example.com"
+    port: 443
+    tls:
+      mode: Passthrough
+  - name: example-net-wildcard
+    protocol: TLS
+    hostname: "*.example.net"   # Note this excludes apex domain example.net
+    port: 443
+    tls:
+      mode: Passthrough
+  - name: all-matching-tlsroute # Empty listener would match whatever tlsroute are attached, but in this case there aren't any defined below
+    protocol: TLS
+    port: 8443
+    tls:
+      mode: Passthrough
+---
+# SNI based routing. In this case both tlsroutes map to the same backend service, but this is the recommended way to prevent unexpected cascading listener matching behavior
+apiVersion: gateway.networking.k8s.io/v1
+kind: TLSRoute
+metadata:
+  name: caddy-rilb-testing-route
+  namespace: caddy
+spec:
+  parentRefs:
+  - name: caddy-rilb
+    sectionName: example-testing
+  hostnames:
+  - "testing.example.com"
+  rules:
+  - backendRefs:
+    - group: ""
+      kind: Service
+      name: caddy
+      port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: TLSRoute
+metadata:
+  name: caddy-rilb-wildcard-route
+  namespace: caddy
+spec:
+  parentRefs:
+  - name: caddy-rilb
+    sectionName: example-net-wildcard
+  hostnames:
+  - "*.example.net"
+  #- "example.net"   # This one won't work unless added as another precise listener on gateway or switch to a port-only based listener like sectionName: all-matching-tlsroute
+  rules:
+  - backendRefs:
+    - group: ""
+      kind: Service
+      name: caddy
+      port: 443
+
+# Testing Internal LB from a VM or pod inside the VPC:
+#  kubectl get -n caddy gateway/caddy-rilb -o jsonpath='{.status.addresses[0].value}'
+#  RILB_IP=10.129.2.9
+#  curl -vsk --resolve testing.example.com:443:$RILB_IP https://testing.example.com
+#  curl -vsk --resolve anything.example.net:443:$RILB_IP https://anything.example.net
+#  curl -vsk --resolve example.net:443:$RILB_IP https://example.net   # Expected to fail
+#  
+#  kubectl logs -n caddy deploy/caddy caddy -f

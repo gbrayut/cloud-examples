@@ -1,0 +1,218 @@
+# Create a caddy web server with self signed tls certificates for testing GSLB and GKE Gateways
+apiVersion: v1
+kind: Namespace
+metadata:
+  #labels:
+  #  istio.io/rev: default
+  name: caddy
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: caddy
+  namespace: caddy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: caddy
+  template:
+    metadata:
+      labels:
+        app: caddy
+    spec:
+      containers:
+      - name: caddy
+        image: caddy:2-alpine
+        imagePullPolicy: IfNotPresent
+        command: ["caddy", "run", "--config", "/Caddyfile"]
+        #env:
+        #- name: ADMIN_USER
+        #  valueFrom:
+        #    secretKeyRef:
+        #      name: basic-auth
+        #      key: user
+        #- name: ADMIN_PASSWORD
+        #  valueFrom:
+        #    secretKeyRef:
+        #      name: basic-auth
+        #      key: password
+        ports:
+        - name: http
+          containerPort: 8080
+        - name: https
+          containerPort: 8443
+        resources:
+          limits:
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /Caddyfile
+          name: caddy-config
+          subPath: Caddyfile
+      volumes:
+        - name: caddy-config
+          configMap:
+            name: caddy-config
+            items:
+              - key: Caddyfile
+                path: Caddyfile
+                mode: 0644
+---
+# This will create a named Standalone NEG for each zone where pods are deployed https://cloud.google.com/kubernetes-engine/docs/how-to/standalone-neg
+# If name is omitted it will generate a name like: k8s1-CLUSTER_UID-NAMESPACE-SERVICE-PORT-RANDOM_HASH
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "caddy-sa-neg"
+  namespace: caddy
+  # https://cloud.google.com/kubernetes-engine/docs/concepts/service-load-balancer-parameters#service_parameters
+  annotations:
+    cloud.google.com/neg: '{"exposed_ports": {"443":{"name": "caddy-tls"}}}'
+    # use pre-provisioning to create empty neg in zones without replicas https://docs.cloud.google.com/kubernetes-engine/docs/how-to/standalone-neg#pre-provisioning
+spec:
+  ports:
+  - port: 443
+    targetPort: 8443  # This is the listening port inside the container and should match the firewall rules
+    protocol: TCP
+    appProtocol: tls
+    name: tls
+  selector:
+    app: caddy
+  type: ClusterIP   # Can still use other types as well but ClusterIP is usually recommended
+---
+# Optional secondary service for testing caddy pods directly
+apiVersion: v1
+kind: Service
+metadata:
+  name: caddy
+  namespace: caddy
+  annotations:
+    # https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#create
+    networking.gke.io/load-balancer-type: "Internal"
+    networking.gke.io/internal-load-balancer-allow-global-access: "true"
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+    appProtocol: http
+    name: http
+  - port: 443
+    targetPort: 8443
+    #appProtocol: https   #should be tls or unset for passthrough, https if terminated/re-established on ALB
+    name: https
+  selector:
+    app: caddy
+  type: LoadBalancer    # Could use ClusterIP instead, but internal NLB for direct testing of caddy can be useful
+---
+# Configure health checks https://docs.cloud.google.com/kubernetes-engine/docs/how-to/configure-gateway-resources#configure_health_check
+# SSL based health checks are not available in September 2026 TODO: update this once they are added
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: caddy-hc
+  namespace: caddy
+spec:
+  default:
+    checkIntervalSec: 15
+    timeoutSec: 15
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    logConfig:  # Find in Log Explorer using logName="projects/<projectname>/logs/compute.googleapis.com%2Fhealthchecks"
+      enabled: True  # Usually only need to enable during initial troubleshooting
+    config:   # see https://cloud.google.com/load-balancing/docs/features#health-checks for which checks are supported
+      type: TCP   # HTTP/HTTPS not yet available for SNI Based Routing (mode: Passthrough)
+      # see also: kubectl explain HealthCheckPolicy.spec.default.config and https://cloud.google.com/compute/docs/reference/rest/v1/healthChecks
+      tcpHealthCheck:
+        port: 8080  # uses a dedicated http only section of caddyfile (see below)
+        # NOTE: You will need a firewall rule that allows 35.191.0.0/16 and 130.211.0.0/22 to reach the above port for target Tags: allow-health-checks (See configure_health_check doc link above)
+  targetRef:
+    group: ""
+    kind: Service
+    name: caddy
+---
+# Configure caddy webserver to listen on 8080 (http) and 8443 (https with self signed certs)
+# tls internal will generate self signed certs for example.com, example.net, and all direct subdomains of those two hostnames (see line 174)
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: caddy-config
+  namespace: caddy
+  labels:
+    app: caddy
+data:
+  # https://caddyserver.com/docs/caddyfile
+  Caddyfile: |
+    {
+    	admin 127.0.0.1:2019 # https://caddyserver.com/docs/api
+    	auto_https off
+    	#email
+      
+      local_certs
+      skip_install_trust
+
+      # https://caddyserver.com/docs/caddyfile/directives/log#log
+      log default {
+        format console
+        level debug
+      }
+    }
+
+    # http backend
+    http://:8080 {
+      log
+
+    	respond 200 {
+        # add trailing newline to http response
+    		body `success on http
+    `
+    		close
+    	}
+    }
+
+    # https backends
+    # Must specify domain(s) here if you want caddy to generate internal certs
+    https://example.com:8443, https://*.example.com:8443, https://example.net:8443, https://*.example.net:8443 {
+      log
+
+    	tls internal {
+        on_demand  # generates single domain certificates based on SNI
+        insecure_secrets_log /tmp/cert.log
+      }
+
+      header /* x-testing "this is a test 123"
+
+    	respond 200 {
+    		body `success on https
+          host: {http.request.host}
+          path: {http.request.uri.path}
+    `
+    		close
+    	}
+    }
+
+    # pod-to-pod https backends
+    https://caddy.caddy.svc.cluster.local:8443 {
+      log
+
+    	tls internal {
+        on_demand  # generates single domain certificates based on SNI
+        insecure_secrets_log /tmp/cert.log
+      }
+
+      header /* x-testing "this is a test 123"
+
+    	respond 200 {
+    		body `success on https k8s svc discovery
+          host: {http.request.host}
+          path: {http.request.uri.path}
+    `
+    		close
+    	}
+    }
+
+# Testing NLB from VM on VPC
+#  kubectl get svc -n caddy
+#  curl -vs http://10.253.1.6
+#  curl -vsk --resolve example.com:443:10.253.1.6 https://example.com
+#  curl -vsk --resolve example.net:443:10.253.1.6 https://example.net
+#  curl -vsk --resolve caddy.example.com:443:10.253.1.6 https://caddy.example.com
