@@ -118,7 +118,7 @@ spec:
     healthyThreshold: 1
     unhealthyThreshold: 2
     logConfig:  # Find in Log Explorer using logName="projects/<projectname>/logs/compute.googleapis.com%2Fhealthchecks"
-      enabled: True  # Usually only need to enable during initial troubleshooting
+      enabled: False  # Usually only need to enable during initial troubleshooting
     config:   # see https://cloud.google.com/load-balancing/docs/features#health-checks for which checks are supported
       type: TCP   # HTTP/HTTPS not yet available for SNI Based Routing (mode: Passthrough)
       # see also: kubectl explain HealthCheckPolicy.spec.default.config and https://cloud.google.com/compute/docs/reference/rest/v1/healthChecks

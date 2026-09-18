@@ -1,0 +1,27 @@
+# Blue ServiceExport for GKE Multi-Cluster Services https://docs.cloud.google.com/kubernetes-engine/docs/concepts/multi-cluster-services
+# requires: kubectl apply -f https://github.com/gbrayut/cloud-examples/raw/refs/heads/main/gke-gclb-misc/base-whereami.yaml
+kind: ServiceExport
+apiVersion: net.gke.io/v1
+metadata:
+ name: whereami-blue
+ namespace: test-gclb
+---
+# If you want to have different weights per target, they need different service names.
+# Using the same whereami service name from the base-whereami.yaml on both clusters would be fine for an active-active deployment
+apiVersion: v1
+kind: Service
+metadata:
+  name: whereami-blue
+  namespace: test-gclb
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+    appProtocol: http
+    name: http
+  selector:
+    app: whereami
+  type: ClusterIP
+
+# kubectl apply -f mcs-blue.yaml
+# gcloud container fleet multi-cluster-services describe

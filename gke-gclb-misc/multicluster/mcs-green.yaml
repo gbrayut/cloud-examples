@@ -1,0 +1,51 @@
+# Green ServiceExport for GKE Multi-Cluster Services https://docs.cloud.google.com/kubernetes-engine/docs/concepts/multi-cluster-services
+# requires: kubectl apply -f https://github.com/gbrayut/cloud-examples/raw/refs/heads/main/gke-gclb-misc/base-whereami.yaml
+kind: ServiceExport
+apiVersion: net.gke.io/v1
+metadata:
+ name: whereami-green
+ namespace: test-gclb
+---
+# If you want to have different weights per target, they need different service names.
+# Using the same whereami service name from the base-whereami.yaml on both clusters would be fine for an active-active deployment
+apiVersion: v1
+kind: Service
+metadata:
+  name: whereami-green
+  namespace: test-gclb
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+    appProtocol: http
+    name: http
+  selector:
+    app: whereami
+  type: ClusterIP
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: whereami-green-healthcheck
+  namespace: test-gclb
+spec:
+  default:
+    checkIntervalSec: 15
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    logConfig:
+      enabled: False  # Usually only need to enable during initial troubleshooting
+    config:
+      type: HTTP
+      httpHealthCheck:
+        portSpecification: USE_SERVING_PORT
+        requestPath: /healthz
+  targetRef:
+    group: ""
+    kind: Service
+    name: whereami-green
+
+# kubectl apply -f mcs-green.yaml
+# gcloud container fleet multi-cluster-services describe
+# gcloud compute health-checks list

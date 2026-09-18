@@ -1,0 +1,33 @@
+# Shared whereami ServiceExport for GKE Multi-Cluster Services https://docs.cloud.google.com/kubernetes-engine/docs/concepts/multi-cluster-services
+# requires: kubectl apply -f https://github.com/gbrayut/cloud-examples/raw/refs/heads/main/gke-gclb-misc/base-whereami.yaml
+kind: ServiceExport
+apiVersion: net.gke.io/v1
+metadata:
+ name: whereami
+ namespace: test-gclb
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: whereami-healthcheck
+  namespace: test-gclb
+spec:
+  default:
+    checkIntervalSec: 15
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    logConfig:
+      enabled: False  # Usually only need to enable during initial troubleshooting
+    config:
+      type: HTTP
+      httpHealthCheck:
+        portSpecification: USE_SERVING_PORT
+        requestPath: /healthz
+  targetRef:
+    group: net.gke.io
+    kind: ServiceImport
+    name: whereami
+
+# kubectl apply -f mcs-whereami.yaml
+# gcloud container fleet multi-cluster-services describe

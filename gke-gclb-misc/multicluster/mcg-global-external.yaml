@@ -1,0 +1,65 @@
+# basic example for gke-l7-global-external-managed-mc https://docs.cloud.google.com/kubernetes-engine/docs/how-to/deploy-external-multi-cluster-gateway
+# mc gatewayclasses are only installed on config clusters. See https://docs.cloud.google.com/kubernetes-engine/docs/how-to/prepare-environment-multi-cluster-gateways 
+kind: Gateway
+apiVersion: gateway.networking.k8s.io/v1
+metadata:
+  name: mcg-gxlb-whereami
+  namespace: test-gclb
+spec:
+  gatewayClassName: gke-l7-global-external-managed-mc
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 80
+    allowedRoutes:
+      kinds:
+      - kind: HTTPRoute
+---
+kind: HTTPRoute
+apiVersion: gateway.networking.k8s.io/v1
+metadata:
+  name: mcg-whereami-route
+  namespace: test-gclb
+spec:
+  hostnames:
+  - "whereami.example.com"
+  parentRefs:
+  - name: mcg-gxlb-whereami
+  rules:
+  # optional blue/green routes for direct testing (See mcg-gxlb-blue-green.yaml)
+  #- matches:
+  #  - path:
+  #      type: PathPrefix
+  #      value: /blue
+  #  backendRefs:
+  #    - group: net.gke.io
+  #      kind: ServiceImport
+  #      name: whereami-blue
+  #      port: 80
+  #- matches:
+  #  - path:
+  #      type: PathPrefix
+  #      value: /green
+  #  backendRefs:
+  #  - group: net.gke.io
+  #    kind: ServiceImport
+  #    name: whereami-green
+  #    port: 80
+  # Default route using shared import across both clusters
+  - backendRefs:
+    - name: whereami
+      group: net.gke.io
+      kind: ServiceImport
+      port: 80
+
+
+# kubectl get serviceimport -n test-gclb
+# GW_IP=$(kubectl get -n test-gclb gateway/mcg-gxlb-whereami -o jsonpath='{.status.addresses[0].value}')
+# curl -vs --resolve whereami.example.com:80:$GW_IP http://whereami.example.com/blue/node_name
+# curl -vs --resolve whereami.example.com:80:$GW_IP http://whereami.example.com/green/node_name
+# curl -vs --resolve whereami.example.com:80:$GW_IP http://whereami.example.com/node_name
+# for i in {1..500}; do curl -s --resolve whereami.example.com:80:$GW_IP http://whereami.example.com/node_name;printf " at [%(%F %T)T]\n";sleep 1;done^C
+# kubectl scale deployment -n test-gclb whereami --replicas 0   # run this on one of the clusters to see automatic traffic switching
+
+# You can also see healthy endpoints from the config cluster using:
+# kubectl get endpointslices -n test-gclb

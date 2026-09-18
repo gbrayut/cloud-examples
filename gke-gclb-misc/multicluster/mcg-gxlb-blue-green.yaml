@@ -1,0 +1,113 @@
+# blue/green using gke-l7-global-external-managed-mc https://docs.cloud.google.com/kubernetes-engine/docs/how-to/deploy-external-multi-cluster-gateway
+# mc gatewayclasses are only installed on config clusters. See https://docs.cloud.google.com/kubernetes-engine/docs/how-to/prepare-environment-multi-cluster-gateways 
+kind: Gateway
+apiVersion: gateway.networking.k8s.io/v1
+metadata:
+  name: mcg-gxlb-blue-green
+  namespace: test-gclb
+spec:
+  gatewayClassName: gke-l7-global-external-managed-mc
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 80
+    allowedRoutes:
+      kinds:
+      - kind: HTTPRoute
+---
+kind: HTTPRoute
+apiVersion: gateway.networking.k8s.io/v1
+metadata:
+  name: mcg-whereami-route
+  namespace: test-gclb
+spec:
+  hostnames:
+  - "whereami.example.com"
+  parentRefs:
+  - name: mcg-gxlb-blue-green
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /blue
+    backendRefs:
+      - group: net.gke.io
+        kind: ServiceImport
+        name: whereami-blue
+        port: 80
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /green
+    backendRefs:
+    - group: net.gke.io
+      kind: ServiceImport
+      name: whereami-green
+      port: 80
+  - backendRefs:
+    # 100% of traffic to whereami-blue https://docs.cloud.google.com/kubernetes-engine/docs/how-to/deploy-gateway-traffic-splitting#traffic-split
+    - name: whereami-blue
+      group: net.gke.io
+      kind: ServiceImport
+      port: 80
+      weight: 100
+    # Start with 0% of traffic to whereami-green then ramp as needed (80/20, 50/50, 0/100)
+    - name: whereami-green
+      group: net.gke.io
+      kind: ServiceImport
+      port: 80
+      weight: 0     # Will never recieve any traffic on this default match if set to zero, even if blue or both blue/green are unhealthy
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: whereami-blue-healthcheck
+  namespace: test-gclb
+spec:
+  default:
+    checkIntervalSec: 15
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    logConfig:
+      enabled: False  # Usually only need to enable during initial troubleshooting
+    config:
+      type: HTTP
+      httpHealthCheck:
+        portSpecification: USE_SERVING_PORT
+        requestPath: /healthz
+  targetRef:
+    group: net.gke.io
+    kind: ServiceImport
+    name: whereami-blue
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: whereami-green-healthcheck
+  namespace: test-gclb
+spec:
+  default:
+    checkIntervalSec: 15
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    logConfig:
+      enabled: False  # Usually only need to enable during initial troubleshooting
+    config:
+      type: HTTP
+      httpHealthCheck:
+        portSpecification: USE_SERVING_PORT
+        requestPath: /healthz
+  targetRef:
+    group: net.gke.io
+    kind: ServiceImport
+    name: whereami-green
+
+
+# kubectl get serviceimport -n test-gclb
+# GW_IP=$(kubectl get -n test-gclb gateway/mcg-gxlb-blue-green -o jsonpath='{.status.addresses[0].value}')
+# curl -vs --resolve whereami.example.com:80:$GW_IP http://whereami.example.com/blue/node_name
+# curl -vs --resolve whereami.example.com:80:$GW_IP http://whereami.example.com/green/node_name
+# curl -vs --resolve whereami.example.com:80:$GW_IP http://whereami.example.com/node_name
+# for i in {1..500}; do curl -s --resolve whereami.example.com:80:$GW_IP http://whereami.example.com/node_name;printf " at [%(%F %T)T]\n";sleep 1;done^C
