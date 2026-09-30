@@ -74,20 +74,20 @@ spec:
           value: "True"
 ---
 # Internal passthrough NLB https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing
-# by default cluster without subsetting use instance groups backends for passthrough NLB
-# clusters using --enable-l4-ilb-subsetting will instead create a GCE_VM_IP NEG per zone for Service type LoadBalancer
-# Standalone NEG will create zonal GCE_VM_IP_PORT https://cloud.google.com/kubernetes-engine/docs/how-to/standalone-neg
-apiVersion: "v1"
-kind: "Service"
+# GKE clusters without subsetting originally used instance groups backends for passthrough NLB
+# Newer clusters or those created with --enable-l4-ilb-subsetting will instead create a GCE_VM_IP NEG per zone for Service type LoadBalancer
+# Standalone NEG will create one GCE_VM_IP_PORT NEG per zone https://cloud.google.com/kubernetes-engine/docs/how-to/standalone-neg
+apiVersion: v1
+kind: Service
 metadata:
-  name: "whereami-spread"   # or whereami-spread-new after enabling subsetting if you want both
+  name: whereami-spread
   namespace: test-gclb
   # https://cloud.google.com/kubernetes-engine/docs/concepts/service-load-balancer-parameters#service_parameters
   annotations:
     networking.gke.io/load-balancer-type: "Internal"
     networking.gke.io/internal-load-balancer-allow-global-access: "true"
 spec:
-  # trafficDistribution: "PreferClose" # Beta in 1.31 used to prioritize same zone/region https://kubernetes.io/docs/reference/networking/virtual-ips/#traffic-distribution
+  # trafficDistribution: PreferSameZone   # Used to prioritize routing to same zone/region https://kubernetes.io/docs/reference/networking/virtual-ips/#traffic-distribution
   ports:
   - port: 80
     targetPort: 8080
@@ -95,8 +95,8 @@ spec:
     appProtocol: http
     name: http
   selector:
-    app: "whereami-spread"
-  type: "LoadBalancer"
+    app: whereami-spread
+  type: LoadBalancer
 # default unmanaged instance group backend format: k8s-ig--RANDOM_HASH? Forwarding Rule: 32 hexadecimal digit GUID?
 # example: k8s-ig--9be17460365bd3d3 and a6026cb9fecd24fbabbe8b5b90722380
 # subsetting format: k8s2-CLUSTER_UID-NAMESPACE-SERVICE-RANDOM_HASH? Forwarding Rule: k8s2-PROTOCOL-CLUSTER_UID-NAMESPACE-SERVICE-RANDOM_HASH? 
@@ -104,15 +104,16 @@ spec:
 ---
 # Standalone NEG for zonal GCE_VM_IP_PORT https://cloud.google.com/kubernetes-engine/docs/how-to/standalone-neg
 # If name is omited it will use the format: k8s1-CLUSTER_UID-NAMESPACE-SERVICE-PORT-RANDOM_HASH
-# Also Size seems to always be zero when viewed via gcloud?
-apiVersion: "v1"
-kind: "Service"
+# View details using: gcloud compute network-endpoint-groups list --filter "name:test-standalone"
+apiVersion: v1
+kind: Service
 metadata:
-  name: "wai-sa-neg"
+  name: wai-sa-neg
   namespace: test-gclb
   # https://cloud.google.com/kubernetes-engine/docs/concepts/service-load-balancer-parameters#service_parameters
   annotations:
-    cloud.google.com/neg: '{"exposed_ports": {"80":{"name": "test-standalone"}}}'
+    cloud.google.com/neg: '{"exposed_ports": {"80":{"name": "test-standalone"}}, "zones":["*"]}'
+    # "zones":["*"] will pre-allocate NEGs even for zones in the region without current nodes/pods https://docs.cloud.google.com/kubernetes-engine/docs/how-to/standalone-neg#pre-provisioning
 spec:
   ports:
   - port: 80
@@ -121,5 +122,5 @@ spec:
     appProtocol: http
     name: http
   selector:
-    app: "whereami-spread"
-  type: "ClusterIP"   # Can still use other types as well but ClusterIP is usually recommended
+    app: whereami-spread
+  type: ClusterIP   # Can still use other types as well but ClusterIP is usually recommended
