@@ -1,0 +1,89 @@
+# WIP: gcsfuse example for microvm on GKE 1.37+ https://docs.cloud.google.com/kubernetes-engine/docs/how-to/sandbox-pods
+# NOTE: gcs-fuse-csi-driver does not yet support kata containers, pending integration with virtio-fs and vhost-user for host<->guest access
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sandbox-microvm
+  namespace: test-gcs
+  labels:
+    app: sandbox-microvm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sandbox-microvm
+  template:
+    metadata:
+      #annotations:
+      #  gke-gcsfuse/volumes: "true"     # CSI driver wont work for microvm, UDS from the node can't be reached from nested vm
+      labels:
+        app: sandbox-microvm
+    spec:
+      runtimeClassName: microvm         # GKE 1.37+ can use microvm instead of gvisor
+      terminationGracePeriodSeconds: 60 # default of 30 may be too short when flushing large file writes at application exit
+
+      # This shows how to use gcsfuse as a privliged sidecar to mount into a shared emptydir volume
+      initContainers:
+      - name: gcsfuse-sidecar
+        #image: gcr.io/google.com/cloudsdktool/cloud-sdk:588.0.0-stable #gcr.io/gke-release/gcs-fuse-csi-driver:v1.22.28-gke.4  #-sidecar-mounter
+        image: ghcr.io/rclone/rclone:latest   # Needed an image with fusermount binary
+        command: ["/bin/sh", "-c", "mkdir /mnt/gcs/bucket;/mnt/mounter/gcsfuse --log-format=text --foreground --uid=0 --gid=0 gregbray-testing /mnt/gcs/bucket"]
+        #command: ["/bin/sh", "-c", "sleep infinity"]   # easier when testing gcsfuse options
+        restartPolicy: Always # creates a k8s native sidecar
+        securityContext:
+          privileged: true    # These four lines are required for creating FUSE mounts
+          capabilities:
+            add:
+              - SYS_ADMIN
+        volumeMounts:
+        - name: shared-emptydir
+          mountPath: /mnt/gcs
+          mountPropagation: Bidirectional   # Required for new mounts to propagate to microvm
+        - name: gcsfuse-mounter
+          mountPath: /mnt/mounter   # contains gcsfuse binary (could also install via apt or use a custom container)
+        - name: dev-fuse
+          mountPath: /dev/fuse      # Seem to be required on microvm to get access to fuse mounts
+      # Main container can then access GCS via shared-emptydir
+      containers:
+      - image: busybox
+        name: busybox
+        command: ["sleep"]
+        args: ["infinity"]
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        volumeMounts:
+        # access GCS bucket using fuse mount from sidecar
+        - name: shared-emptydir
+          mountPath: /data
+          readOnly: false
+          mountPropagation: HostToContainer # Required if using medium: Memory on volume
+      serviceAccountName: test-gcs-access   # Must have WIF with roles/storage.objectViewer or objectUser on GCS Bucket or project
+      volumes:
+      - name: shared-emptydir
+        emptyDir:
+          sizeLimit: 50Mi   # This is just a shared mount, doesn't need any actual storage (which likely is bound by pod's Memory request/limit)
+          medium: Memory    # Used to prevent using virtio-fs based mount, instead should get tmpfs inside microvm        
+      # Use the new image volume feature to get gcsfuse binary https://kubernetes.io/docs/concepts/storage/volumes/#image
+      - name: gcsfuse-mounter
+        image:
+          # https://github.com/GoogleCloudPlatform/gcs-fuse-csi-driver/blob/main/cmd/sidecar_mounter/Dockerfile
+          # find latest version at https://console.cloud.google.com/artifacts/docker/gke-release/us/gcr.io/gcs-fuse-csi-driver-sidecar-mounter
+          reference: gcr.io/gke-release/gcs-fuse-csi-driver-sidecar-mounter:v1.22.28-gke.4
+          pullPolicy: IfNotPresent
+      - name: dev-fuse
+        hostPath:
+          path: /dev/fuse   # my k8s-gcsfuse examples didn't previously need this, so may just be due to the container image I used or part of using microvm
+
+
+# kubectl logs -n test-gcs deploy/sandbox-microvm -c gcsfuse-sidecar
+# kubectl exec -it -n test-gcs deploy/sandbox-microvm-bc79cd498-nxvfd -- /bin/sh
+
+# ls /data/bucket/
+# total 0      
+# drwxr-xr-x    1 root     root           0 Oct 10 00:06 this-is-gregbray-testing
+
+#TODO: Test if using medium: Memory is actually faster on microvm, and if omitting it uses virtio-fs volume from node instead of microvm tmpfs

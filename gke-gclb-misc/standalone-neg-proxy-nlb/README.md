@@ -179,6 +179,6 @@ Standalone NEGs allow you to configure advanced Google Cloud Load Balancing feat
 
 - [Cloud DNS Routing Policies](https://docs.cloud.google.com/dns/docs/routing-policies-overview): If you need weighted distribution across multiple clusters, geographic steering, or cross-region failover without managing reverse-proxy infrastructure, DNS routing policies provide a flexible client-side alternative. They also resolve seamlessly across heterogeneous targets, including on-premises environments and multi-cloud endpoints.
 
-- [Multi-Cluster Ingress](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/multi-cluster-ingress) (MCI) and Gateways (MCG): For HTTP/HTTPS workloads spanning multiple GKE clusters, MCI and MCG provide native, declarative multi-cluster load balancing.
+- [Multi-Cluster Services](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/multi-cluster-services) (MCS) and [Gateways](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/choose-mc-lb-api) (MCG): For workloads spanning multiple GKE clusters MCS and MCG provide native, declarative multi-cluster load balancing for east-west or north-south traffic.
 
 - [Service Extensions](https://docs.cloud.google.com/service-extensions/docs/lb-extensions-overview): If you need custom L7 routing, in-line payload inspection, or fine-grained traffic manipulation beyond standard load balancer capabilities, Service Extensions allow you to inject custom WebAssembly (Wasm) plugins or gRPC callouts directly into the data path of supported Application Load Balancers.
