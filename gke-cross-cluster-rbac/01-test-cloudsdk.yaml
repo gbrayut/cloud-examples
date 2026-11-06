@@ -164,8 +164,8 @@ subjects:
 
 
 # Testing:
-# kubectl exec -it -n test-cloudsdk google-cloud-cli -- /bin/bash
+# kubectl exec -it -n test-cloudsdk deploy/google-cloud-cli -- /bin/bash
 # then: kubectl get pods
 # or:   kubectl get pods --context local-adc
 # or:   kubectl get pods --context ap1-us-west1
-# and:  kubectl auth whoami
+# and:  kubectl auth whoami (with different contexts)

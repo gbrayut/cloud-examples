@@ -1,0 +1,119 @@
+# https://cloud.google.com/kubernetes-engine/docs/tutorials/serve-gemma-gpu-vllm#gemma-4-12b-it
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-gemma-4-12b
+spec:
+  replicas: 1   # start with 1 replica then scale after confirming it works
+  selector:
+    matchLabels:
+      app: vllm-gemma-4-12b
+  strategy:
+    type: Recreate  # Use this for faster updates when troubleshooting (but not in production)
+  template:
+    metadata:
+      labels:
+        app: vllm-gemma-4-12b
+        ai.gke.io/model: gemma-4-12b-it
+        ai.gke.io/inference-server: vllm
+        examples.ai.gke.io/source: user-guide
+    spec:
+      terminationGracePeriodSeconds: 15  # again faster troubleshooting but production should have better drain time
+      containers:
+      - name: inference-server
+        #image: nvidia/cuda:12.2.0-base-ubuntu22.04
+        command: ["/bin/bash","-c","sleep 99999999"]
+        image: docker.io/vllm/vllm-openai:v0.15.1 #v0.22.1 # May need to pin to v0.15.1
+        resources:
+          requests:  # See resources at https://docs.cloud.google.com/compute/docs/accelerator-optimized-machines#g4-machine-types
+            cpu: "2"                    # g4-standard-24 has 24 cpu per node
+            memory: "40Gi"              # ~87GB total per node
+            ephemeral-storage: "35Gi"   # ~47GB total per node
+            nvidia.com/gpu: "1"
+          limits:
+            cpu: "20"
+            memory: "90Gi"
+            ephemeral-storage: "47Gi"
+            nvidia.com/gpu: "1"
+        #command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+        #args:
+        #- --model=$(MODEL_ID)
+        #- --tensor-parallel-size=1        # usually matches number of GPUs assigned to the pod
+        #- --gpu-memory-utilization=0.95   # reduce if ERROR [core.py:700] RuntimeError: NVML_SUCCESS == r INTERNAL ASSERT FAILED at "/pytorch/c10/cuda/CUDACachingAllocator.cpp":1016, please report a bug to PyTorch.
+        #- --host=0.0.0.0
+        #- --port=8000
+        env:
+        - name: VLLM_LOGGING_LEVEL
+          value: DEBUG  # for troubleshooting RuntimeError: Failed to infer device type
+        - name: LD_LIBRARY_PATH
+          value: ${LD_LIBRARY_PATH}:/usr/local/nvidia/lib
+        - name: MODEL_ID
+          value: google/gemma-3-1b-it #google/gemma-4-12b-it not working with vllm
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: hf_api_token
+        volumeMounts:
+        - mountPath: /dev/shm
+          name: dshm
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        lifecycle:
+          preStop:
+            sleep:
+              seconds: 15   # Helps drain connections
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+            scheme: HTTP
+          periodSeconds: 5
+          successThreshold: 1
+          failureThreshold: 5
+          timeoutSeconds: 1
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+            scheme: HTTP
+          periodSeconds: 5
+          successThreshold: 1
+          failureThreshold: 1
+          timeoutSeconds: 1
+        startupProbe:
+          failureThreshold: 3600
+          initialDelaySeconds: 2
+          periodSeconds: 1
+          httpGet:
+            path: /health
+            port: http
+            scheme: HTTP
+      #initContainers:
+      #- name: cuda
+      #  image: nvidia/cuda:12.2.0-base-ubuntu22.04
+      #  command: ["/bin/bash","-c","sleep 99999999"]
+      #  restartPolicy: Always
+      volumes:
+      - name: dshm
+        emptyDir:
+            medium: Memory
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-rtx-pro-6000
+        node.kubernetes.io/instance-type: g4-standard-24
+        #cloud.google.com/gke-accelerator-count: "1"  # only required for Autopilot/NAP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-gemma-4-12b
+spec:
+  selector:
+    app: vllm-gemma-4-12b
+  type: ClusterIP
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000

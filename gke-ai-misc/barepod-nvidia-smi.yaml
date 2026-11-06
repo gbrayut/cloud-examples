@@ -1,0 +1,26 @@
+# https://cloud.google.com/kubernetes-engine/docs/tutorials/serve-gemma-gpu-vllm#gemma-4-12b-it
+apiVersion: v1
+kind: Pod
+metadata:
+  name: barepod-nvidia-smi
+spec:
+  terminationGracePeriodSeconds: 0
+  containers:
+  - name: cuda-container
+    image: nvidia/cuda:12.2.0-base-ubuntu22.04
+    command: ["/bin/bash","-c","/usr/local/nvidia/bin/nvidia-smi;sleep 99999999"]
+    resources:
+      limits:
+        nvidia.com/gpu: "1"
+      requests:
+        nvidia.com/gpu: "1"
+  restartPolicy: Never 
+  nodeSelector:
+    cloud.google.com/gke-accelerator: nvidia-rtx-pro-6000
+  tolerations:
+  - key: "nvidia.com/gpu"
+    operator: "Exists"
+    effect: "NoSchedule"
+
+# kubectl logs barepod-nvidia-smi
+# kubectl delete pod/barepod-nvidia-smi
