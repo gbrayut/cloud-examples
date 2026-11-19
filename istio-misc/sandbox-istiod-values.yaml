@@ -8,7 +8,7 @@ pilot:
 
 sidecarInjectorWebhook:
   templates:
-    # Separate template for kata/microvm sandbox which requires privliged istio-init instead of istio-validation
+    # Separate template for kata/microvm sandbox which requires privileged istio-init instead of istio-validation
     kata-init: |
       spec:
         initContainers:

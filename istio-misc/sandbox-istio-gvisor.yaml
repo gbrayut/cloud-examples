@@ -1,23 +1,23 @@
-# Using istio-init on GKE Sandbox (gvisor). See istio-misc/sandbox-istio.md for more details.
+# Using Istio CNI and istio-validation on GKE Sandbox (gvisor). See istio-misc/sandbox-istio.md for more details.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sandbox-istio-init-gvisor
+  name: sandbox-istio-gvisor
   namespace: test-istio
   labels:
-    app: sandbox-istio-init-gvisor
+    app: sandbox-istio-gvisor
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: sandbox-istio-init-gvisor
+      app: sandbox-istio-gvisor
   template:
     metadata:
       labels:
-        app: sandbox-istio-init-gvisor
+        app: sandbox-istio-gvisor
     spec:
       runtimeClassName: gvisor  # GKE Sandbox settings
-      terminationGracePeriodSeconds: 0    # terminates immediately when testing (dont use in production)
+      terminationGracePeriodSeconds: 0    # terminates immediately when testing (do not use in production)
       containers:
       - image: busybox
         name: busybox

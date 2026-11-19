@@ -2,7 +2,8 @@
 [GKE Agent Sandbox](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/machine-learning/agent-sandbox) is based on the open-source [Agent Sandbox project](https://agent-sandbox.sigs.k8s.io/) and helps you manage isolated, stateful, and single-replica workloads in Kubernetes clusters. It is optimized for use cases like AI agent runtimes that need to generate and execute untrusted code in a disposable (single-use) environment. Follow the [setup instructions and pod requirements/limitations](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/how-install-agent-sandbox) to get started using Agent Sandbox:
 
 ```shell
-# Create a new cluster or update an existing cluster using --enable-agent-sandbox
+# Create a new cluster or update an existing cluster with Agent Sandbox
+# https://docs.cloud.google.com/kubernetes-engine/docs/how-to/how-install-agent-sandbox
 
 # Then add a node pool using the gvisor sandbox
 gcloud container node-pools create "my-gvisor-sandbox" --cluster "my-cluster" --project "my-project" \

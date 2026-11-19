@@ -37,7 +37,7 @@ spec:
   resources:
     requests:
       storage: 5Gi
-  storageClassName: "" # or whatever specified above. Dont need to use this if explicitly specify volumeName and claimRef
+  storageClassName: "" # or whatever specified above. Not needed if explicitly specify volumeName and claimRef
   volumeName: agentsandbox-pool-pv
 ---
 # Use SandboxTemplate and SandboxClaim and SandboxWarmPool https://docs.cloud.google.com/kubernetes-engine/docs/how-to/how-install-agent-sandbox#recommended_create_a_sandboxtemplate_and_sandboxwarmpool

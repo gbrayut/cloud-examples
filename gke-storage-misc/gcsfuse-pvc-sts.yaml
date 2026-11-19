@@ -39,7 +39,7 @@ spec:
   resources:
     requests:
       storage: 5Gi
-  storageClassName: "" # or whatever specified above. Dont need to use this if explicitly specify volumeName and claimRef
+  storageClassName: "" # or whatever specified above. Not needed if explicitly specify volumeName and claimRef
   volumeName: stateful-whereami-pv
 ---
 # Example here uses statfulset, but deployments and explicit PVC resources would also work

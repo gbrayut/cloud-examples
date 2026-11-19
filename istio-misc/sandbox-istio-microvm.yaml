@@ -2,24 +2,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sandbox-istio-init-microvm
+  name: sandbox-istio-microvm
   namespace: test-istio
   labels:
-    app: sandbox-istio-init-microvm
+    app: sandbox-istio-microvm
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: sandbox-istio-init-microvm
+      app: sandbox-istio-microvm
   template:
     metadata:
       annotations:
         inject.istio.io/templates: "kata-init,sidecar"
       labels:
-        app: sandbox-istio-init-microvm
+        app: sandbox-istio-microvm
     spec:
       runtimeClassName: microvm  # GKE Sandbox settings
-      terminationGracePeriodSeconds: 0    # terminates immediately when testing (dont use in production)
+      terminationGracePeriodSeconds: 0    # terminates immediately when testing (do not use in production)
       containers:
       - image: busybox
         name: busybox
