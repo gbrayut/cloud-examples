@@ -1,0 +1,45 @@
+# istiod-values.yaml
+global:
+  platform: gke
+
+pilot:
+  cni:
+    enabled: true
+
+sidecarInjectorWebhook:
+  templates:
+    # Separate template for kata/microvm sandbox which requires privliged istio-init instead of istio-validation
+    kata-init: |
+      spec:
+        initContainers:
+        - name: istio-init
+          image: {{ .Values.global.hub }}/proxyv2:{{ .Values.global.tag }}
+          args:
+          - istio-iptables
+          - -p
+          - "15001"
+          - -z
+          - "15006"
+          - -u
+          - "1337"
+          - -m
+          - REDIRECT
+          - -i
+          - "*"
+          - -x
+          - ""
+          - -b
+          - "*"
+          - -d
+          - 15090,15021,15020
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsUser: 0
+            runAsGroup: 0
+            runAsNonRoot: false
+            capabilities:
+              add:
+              - NET_ADMIN
+              - NET_RAW
+              drop:
+              - ALL
