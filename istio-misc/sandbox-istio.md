@@ -60,3 +60,5 @@ kubectl apply -f https://github.com/gbrayut/cloud-examples/raw/refs/heads/main/i
 
 kubectl get pod -n test-istio -o wide
 ```
+
+For an Agent Sandbox example see [sandbox-agent-istio-microvm.yaml](./sandbox-agent-istio-microvm.yaml)

@@ -1,0 +1,122 @@
+# Using Istio on a GKE Agent Sandbox (microvm). See istio-misc/sandbox-istio.md for more details
+# SandboxTemplate, SandboxWarmPool, and SandboxClaim https://docs.cloud.google.com/kubernetes-engine/docs/how-to/how-install-agent-sandbox#recommended_create_a_sandboxtemplate_and_sandboxwarmpool
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: agentsandbox-microvm
+  namespace: test-istio
+spec:
+  # Allow egress to istiod otherwise istio-proxy sidecar will fail and pod stalls with status Init:1/2
+  # See https://github.com/kubernetes-sigs/agent-sandbox/tree/main/examples/policy/network-policy-management
+  networkPolicyManagement: Managed  # Managed is the default, use Unmanaged to disable generating NetworkPolicy resources
+  networkPolicy:
+    ingress:
+      # Preserve default sandbox-router ingress rule if using the Agent Sandbox runtime / router
+      - from:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: agent-sandbox-system # adjust to your router namespace
+            podSelector:
+              matchLabels:
+                app: sandbox-router # adjust to your router label
+    egress:
+      # 1. Allow DNS resolution for istiod.istio-system.svc (and other Kubernetes services)
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: kube-system
+            podSelector:
+              matchExpressions:
+              - key: k8s-app
+                operator: In
+                values: ["kube-dns","node-local-dns"]
+        ports:
+          - protocol: UDP
+            port: 53
+          - protocol: TCP
+            port: 53
+      # 2. Allow outbound traffic to istiod service in istio-system namespace on port 15012
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: istio-system
+            podSelector:
+              matchLabels:
+                app: istiod
+        ports:
+          - protocol: TCP
+            port: 15012
+      # 3. Include the default rules that allow general IPv4 and IPv6 Internet egress
+      #    but block RFC1918 and link-local ranges usually used by Google Cloud VPCs
+      - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0   # Allows IPv4 Internet egress
+            except:
+            - 10.0.0.0/8
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+            - 169.254.0.0/16  # This is required to block GKE Metadata Server access
+        - ipBlock:
+            cidr: ::/0        # Allows IPv6 Internet egress
+            except:
+            - fc00::/7        # Blocks all ULA subnets (also used by GKE Metadata server)
+            - fe80::/10       # Blocks all link-local subnets
+  podTemplate:
+    metadata:
+      annotations:
+        inject.istio.io/templates: "kata-init,sidecar"  # Required to use istio-init instead of CNI (see istio-misc/sandbox-istio.md)
+      labels:
+        sandbox: test-sandbox-microvm
+    spec:
+      dnsPolicy: ClusterFirst             # Required or Agent Sandbox will add DNS Protection to bypass kube-dns (instead using 8.8.8.8 or 1.1.1.1)
+      runtimeClassName: microvm           # Required
+      automountServiceAccountToken: false # Required
+      securityContext:
+        runAsNonRoot: true                # Required
+        runAsUser: 1000                   # Required if image defaults to root (e.g. busybox)
+        runAsGroup: 1000
+      nodeSelector:
+        sandbox.gke.io/runtime: microvm   # Required
+      tolerations:
+      - key: "sandbox.gke.io/runtime"
+        value: "microvm"
+        effect: "NoSchedule"              # Required
+      containers:
+      - name: my-container
+        image: busybox
+        command: ["/bin/sh", "-c", "sleep infinity"]
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "500m"
+            memory: "1Gi"     # Required
+        securityContext:
+          capabilities:
+            drop: ["ALL"]     # Required
+          allowPrivilegeEscalation: false
+---
+# After applying this you will see agentsandbox-microvm-49dv8 style pods (owned by sandbox instances of the same name which are owned by the agentsandbox-warmpool)
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: agentsandbox-warmpool-microvm
+  namespace: test-istio
+  labels:
+    app: test-microvm
+spec:
+  replicas: 1
+  sandboxTemplateRef:
+    # This must match the name of the SandboxTemplate.
+    name: agentsandbox-microvm
+---
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxClaim
+metadata:
+  name: microvm-sandbox-claim
+  namespace: test-istio
+spec:
+  warmPoolRef:
+    # This must match the name of the SandboxWarmPool.
+    name: agentsandbox-warmpool-microvm
